@@ -44,7 +44,7 @@ Planned functionality:
 | Alexandra Aguilar | alaguilar-unt | Helped create project idea and summary | Planning, Webcam Detection, Blink Selection | None yet |
 | Giovani Lazaro | Glazaro10 | Helped with project planning and scope| Menu.UI, Documentation | None yet |
 | Nicholas Marshall | nichonmarshall-cyber| Set up repository, README, branch structure, and project planning documentation | main, dev, documentation | None yet |
-| Yuvraj Bains | ybains | Helped with project planning and scope | Planning | None yet |
+| Yuvraj Bains | ybains | Helped with project planning and scope | Menu.UI| None yet |
 
 ## Sprint 1 Summary
 During Sprint 1, the team created the initial project idea, selected a team name, assigned the team lead, and set up the GitHub repository. The initial README and branch structure were created to prepare the project for future development.
