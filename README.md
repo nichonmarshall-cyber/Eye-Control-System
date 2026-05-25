@@ -29,6 +29,14 @@ The goal of this project is to create a hands-free interaction method for users 
 - `feature/blink-selection` — planned blink selection work
 - `feature/documentation` — project documentation and README updates
 
+## Menu UI Plan
+-The menu UI will allow users to navigate options using eye movement detection
+Planned functionality:
+-Look left/right to move between menu options
+-Blink to confirm selections
+-Large accessible buttons for easier visbility
+-Simple and user friendly interface
+
 ## Sprint 1 Contributions
 
 | Team Member | GitHub Username | Contributions | Branches/Features Worked On | Pull Requests |
