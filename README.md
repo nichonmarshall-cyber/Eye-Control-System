@@ -33,7 +33,7 @@ The goal of this project is to create a hands-free interaction method for users 
 
 | Team Member | GitHub Username | Contributions | Branches/Features Worked On | Pull Requests |
 |---|---|---|---|---|
-| Alexandra Aguilar | alaguilar-unt | Helped create project idea and summary | Planning | None yet |
+| Alexandra Aguilar | alaguilar-unt | Helped create project idea and summary | Planning, Webcam Detection, Blink Selection | None yet |
 | Giovani Lazaro | Glazaro10 | Helped with project planning and scope| Menu.UI, Documentation | None yet |
 | Nicholas Marshall | nichonmarshall-cyber| Set up repository, README, branch structure, and project planning documentation | main, dev, documentation | None yet |
 | Yuvraj Bains | ybains | Helped with project planning and scope | Planning | None yet |
