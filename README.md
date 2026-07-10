@@ -46,10 +46,10 @@ python main.py
 That should pop up a window with your webcam feed, a "Gaze: ..." label,
 and Start / Stop / Calibrate / Exit buttons.
 
-**First run:** MediaPipe needs a small model file (`face_landmarker.task`)
-that it downloads automatically the first time you run `main.py`, so
-you'll need internet for that. After that it's cached in a `models/`
-folder and works offline.
+The required MediaPipe model file (`face_landmarker.task`) is included
+in the `models/` folder. If it is missing, the application downloads it
+automatically the first time `main.py` runs.so you'll need internet for 
+that. After that it's cached in a `models/` folder and works offline.
 
 ## Completed Features
 
