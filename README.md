@@ -1,50 +1,109 @@
-# Eye Control System
+# EyeAble (Prototype)
 
-## Team Name
-EyeAble Team
-Eye
-## Team Members and Roles
-- Alexandra Aguilar — Team Member
-- Giovani Lazaro — Team Member
-- Nicholas Marshall — Team Lead
-- Yuvraj Bains — Team Member
+EyeAble is a gaze-tracking prototype we're building for our software
+engineering class. It uses your webcam to figure out roughly whether
+you're looking left, center, or right, and shows that in a simple
+desktop window.
 
-## Project Description
-Eye Control System is an accessibility-focused software project that allows users to interact with a computer using basic eye movements. The system will use a webcam to detect gaze direction, such as looking left or right, to navigate through a simple on-screen menu. Users may also be able to select options by blinking.
+**Heads up: this is just a class milestone prototype, not a finished
+product.** The point is to show the core idea working end to end
+(webcam → face tracking → gaze direction → UI), not to have every
+feature done. A bunch of stuff is intentionally left as TODOs for
+whoever picks it up next.
 
-The goal of this project is to create a hands-free interaction method for users who may have limited mobility or difficulty using traditional input devices like a keyboard or mouse.
+## Tech Stack
 
-## Planned Features
-- Webcam-based eye detection
-- Basic gaze direction tracking
-- Simple on-screen menu navigation
-- Blink-based selection
-- Accessible user interface
+- Python
+- OpenCV (webcam capture)
+- MediaPipe (face/eye landmark detection)
+- Tkinter (the GUI)
+- Built and tested on Windows, no GPU needed
 
-## Branch Structure
-- `main` — stable project version
-- `dev` — development branch for combining features
-- `feature/webcam-detection` — planned webcam and eye tracking work
-- `feature/menu-ui` — planned menu interface work
-- `feature/blink-selection` — planned blink selection work
-- `feature/documentation` — project documentation and README updates
+## Project Structure
 
-## Menu UI Plan
--The menu UI will allow users to navigate options using eye movement detection
-Planned functionality:
--Look left/right to move between menu options
--Blink to confirm selections
--Large accessible buttons for easier visbility
--Simple and user friendly interface
+```
+EyeAble/
+│
+├── main.py                # run this to start the app
+├── requirements.txt
+├── README.md
+├── src/
+│   ├── camera.py           # webcam on/off, grabbing frames
+│   ├── gaze_tracker.py      # the actual face/eye/gaze detection logic
+│   ├── calibration.py       # the look-left/center/right calibration popup
+│   ├── gui.py               # the Tkinter window and buttons
+│   ├── utils.py             # small helper functions
+│   └── config.py            # all the constants/settings in one place
+```
 
-## Sprint 1 Contributions
+## Running It
 
-| Team Member | GitHub Username | Contributions | Branches/Features Worked On | Pull Requests |
-|---|---|---|---|---|
-| Alexandra Aguilar | alaguilar-unt | Helped create project idea and summary | Planning | None yet |
-| Giovani Lazaro | Glazaro10 | Helped with project planning and scope| Planning | None yet |
-| Nicholas Marshall | nichonmarshall-cyber| Set up repository, README, branch structure, and project planning documentation | main, dev, documentation | None yet |
-| Yuvraj Bains | ybains | Helped with project planning and scope | Planning | None yet |
+```
+pip install -r requirements.txt
+python main.py
+```
 
-## Sprint 1 Summary
-During Sprint 1, the team created the initial project idea, selected a team name, assigned the team lead, and set up the GitHub repository. The initial README and branch structure were created to prepare the project for future development.
+That should pop up a window with your webcam feed, a "Gaze: ..." label,
+and Start / Stop / Calibrate / Exit buttons.
+
+**First run:** MediaPipe needs a small model file (`face_landmarker.task`)
+that it downloads automatically the first time you run `main.py`, so
+you'll need internet for that. After that it's cached in a `models/`
+folder and works offline.
+
+## Completed Features
+
+- Webcam opens and streams to the GUI
+- Face detection + eye/iris landmark tracking (MediaPipe)
+- Basic left/center/right gaze estimation
+- Basic calibration screen (look left, center, right, capture each one)
+- Start / Stop / Calibrate / Exit buttons
+- Live video preview with little dots showing what's being tracked
+- Current gaze direction shown on screen in real time
+- Code split up by responsibility (camera / tracking / calibration / GUI / config)
+  so it's hopefully not too painful to work on different parts at once
+
+## Current Limitations
+
+- No up/down gaze detection yet, only left/center/right
+- Calibration collects data but doesn't actually change the gaze
+  thresholds yet - it's stored but unused for now
+- No blink detection, so there's no way to "select" anything yet
+- No keyboard/mouse control or gaze-based menu navigation
+- No audio feedback
+- Only works for one person at a time, no saved profiles
+- Barely any error handling - if the camera's in use by another app or
+  disconnects, expect a crash rather than a nice error message
+- Everything runs on the main thread, so it might chug a bit on slower machines
+- No accessibility options in the UI itself yet
+- Uses MediaPipe's newer "Tasks" API instead of the older one, since
+  the old one got removed in recent MediaPipe versions - just means it
+  needs that model file download mentioned above
+
+Most of this is marked with `# TODO:` comments right in the code so
+it's easy to find where to pick things up.
+
+## Future Work
+
+- **Blink detection** - use eye-aspect-ratio (EAR) to detect blinks and use them as a "select" action
+- **Better calibration** - actually use the calibration data to adjust thresholds per person, maybe sample over a few seconds instead of one snapshot per point
+- **Full menu navigation** - let gaze (and eventually blinks) actually control the app instead of just being a label on screen
+- **Improved gaze accuracy** - vertical gaze, better smoothing, maybe a real model instead of hardcoded thresholds
+- **Accessibility improvements** - high contrast mode, adjustable font sizes, audio feedback, sensitivity settings
+
+## Known Bugs
+
+- Gaze label can flicker between CENTER and LEFT/RIGHT near the threshold edges
+- If no face is detected, the label says "NO FACE" but the video might briefly freeze
+- Calibration lets you capture a point even if you weren't actually looking the right direction - no validation
+- If you close the calibration window partway through, it doesn't reset progress if you reopen it
+- Might run slow on weaker laptops since there's no frame skipping or threading yet
+
+## Team Notes
+
+Roughly who'd touch what:
+
+- `gaze_tracker.py` - anyone doing vertical gaze, blink detection, or accuracy improvements
+- `calibration.py` - anyone improving the calibration algorithm or adding saved profiles
+- `gui.py` - anyone doing menu navigation, accessibility settings, or audio feedback
+- `config.py` - shared constants, add new settings here instead of hardcoding numbers elsewhere
