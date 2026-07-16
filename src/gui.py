@@ -47,6 +47,16 @@ class EyeAbleGUI:
         )
         self.gaze_label.grid(row=1, column=0, columnspan=4, pady=(0, 10))
 
+        # Debug label shows the raw gaze values (horizontal and vertical) for testing
+        self.debug_label = tk.Label(
+            self.root,
+            text="h: --- | v: ---",
+            font=("consolas", 10),
+            fg="#888888",
+            bg=config.WINDOW_BG,
+        )
+        self.debug_label.grid(row=1, column=0, columnspan=4, pady=(35, 0))
+
         # The four buttons
         self.start_button = tk.Button(self.root, text="Start", width=12, command=self.start)
         self.start_button.grid(row=2, column=0, padx=5, pady=10)
@@ -114,9 +124,15 @@ class EyeAbleGUI:
 
         success, frame = self.camera.read_frame()
         if success:
-            frame, gaze_direction, _ = self.gaze_tracker.process_frame(frame)
+            frame, gaze_direction, raw_ratio = self.gaze_tracker.process_frame(frame)
 
             self.gaze_label.config(text=f"Gaze: {gaze_direction}")
+
+            if raw_ratio is not None:
+                h_ratio, v_ratio = raw_ratio
+                self.debug_label.config(text=f"h: {h_ratio:.2f} | v: {v_ratio:.2f}")
+            else:
+                self.debug_label.config(text="h: --- | v: ---")
 
             # Converting the OpenCV frame into something Tkinter can actually display
             display_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -138,3 +154,4 @@ class EyeAbleGUI:
     # holding LEFT/RIGHT gaze for a bit selects a menu item).
     # TODO: Add audio feedback (like a beep or text-to-speech) when
     # gaze direction or selection changes.
+
