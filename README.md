@@ -55,8 +55,8 @@ that. After that it's cached in a `models/` folder and works offline.
 
 - Webcam opens and streams to the GUI
 - Face detection + eye/iris landmark tracking (MediaPipe)
-- Basic left/center/right gaze estimation
-- Basic calibration screen (look left, center, right, capture each one)
+- Basic left/center/right/up/down gaze estimation
+- Basic calibration screen (look left, center, right, up, down capture each one)
 - Start / Stop / Calibrate / Exit buttons
 - Live video preview with little dots showing what's being tracked
 - Current gaze direction shown on screen in real time
@@ -65,7 +65,8 @@ that. After that it's cached in a `models/` folder and works offline.
 
 ## Current Limitations
 
-- No up/down gaze detection yet, only left/center/right
+- Vertical gaze estimation still needs improvement and struggles 
+  to accurately distinguish upward and downward eye movement 
 - Calibration collects data but doesn't actually change the gaze
   thresholds yet - it's stored but unused for now
 - No blink detection, so there's no way to "select" anything yet
@@ -88,12 +89,13 @@ it's easy to find where to pick things up.
 - **Blink detection** - use eye-aspect-ratio (EAR) to detect blinks and use them as a "select" action
 - **Better calibration** - actually use the calibration data to adjust thresholds per person, maybe sample over a few seconds instead of one snapshot per point
 - **Full menu navigation** - let gaze (and eventually blinks) actually control the app instead of just being a label on screen
-- **Improved gaze accuracy** - vertical gaze, better smoothing, maybe a real model instead of hardcoded thresholds
+- **Improved gaze accuracy** - better smoothing, maybe a real model instead of hardcoded thresholds
 - **Accessibility improvements** - high contrast mode, adjustable font sizes, audio feedback, sensitivity settings
+- **Diagnostic panel** - Display raw and filtered tracking values to simplify debugging and threshold tuning
 
 ## Known Bugs
 
-- Gaze label can flicker between CENTER and LEFT/RIGHT near the threshold edges
+- Gaze label can flicker between CENTER and LEFT/RIGHT/UP/Doen near the threshold edges
 - If no face is detected, the label says "NO FACE" but the video might briefly freeze
 - Calibration lets you capture a point even if you weren't actually looking the right direction - no validation
 - If you close the calibration window partway through, it doesn't reset progress if you reopen it
@@ -103,7 +105,7 @@ it's easy to find where to pick things up.
 
 Roughly who'd touch what:
 
-- `gaze_tracker.py` - anyone doing vertical gaze, blink detection, or accuracy improvements
+- `gaze_tracker.py` - anyone doing blink detection, or accuracy improvements
 - `calibration.py` - anyone improving the calibration algorithm or adding saved profiles
 - `gui.py` - anyone doing menu navigation, accessibility settings, or audio feedback
 - `config.py` - shared constants, add new settings here instead of hardcoding numbers elsewhere

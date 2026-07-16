@@ -45,15 +45,15 @@ RIGHT_IRIS_LANDMARKS = [473, 474, 475, 476, 477]
 GAZE_LEFT_THRESHOLD = 0.42
 GAZE_RIGHT_THRESHOLD = 0.58
 
-# TODO: Add vertical gaze thresholds once Up/Down detection is implemented
-# GAZE_UP_THRESHOLD = ...
-# GAZE_DOWN_THRESHOLD = ...
+GAZE_UP_THRESHOLD = 0.40
+GAZE_DOWN_THRESHOLD = 0.60
+
 
 # TODO: Add eye-aspect-ratio (EAR) threshold for blink detection
 # BLINK_EAR_THRESHOLD = ...
 
 # ---- Calibration settings ----
-CALIBRATION_POINTS = ["LEFT", "CENTER", "RIGHT"]
+CALIBRATION_POINTS = ["LEFT", "CENTER", "RIGHT","UP", "DOWN"] 
 CALIBRATION_HOLD_FRAMES = 30  # not actually used yet, placeholder for later
 
 # ---- GUI settings ----

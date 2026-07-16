@@ -41,11 +41,12 @@ class GazeTracker:
         # TODO: Actually use this data to adjust thresholds per-user
         # instead of the fixed global ones in config.py. Right now we
         # just save it and don't do anything with it yet.
-        self.calibration_data = {"LEFT": None, "CENTER": None, "RIGHT": None}
+        self.calibration_data = {"LEFT": None, "CENTER": None, "RIGHT": None, "UP": None, "DOWN": None}
 
         # Keeps track of recent gaze readings so we can smooth them out
         # (see moving_average in utils.py).
-        self._ratio_history = []
+        self._h_ratio_history = []
+        self._v_ratio_history = []
 
     @staticmethod
     def _model_path():
@@ -93,20 +94,25 @@ class GazeTracker:
             # We only care about the first face found (num_faces=1 anyway)
             face_landmarks = result.face_landmarks[0]
 
-            raw_ratio = self._compute_horizontal_ratio(face_landmarks, w, h)
-            self._ratio_history.append(raw_ratio)
-            smoothed_ratio = utils.moving_average(self._ratio_history, window=5)
+            h_ratio = self._compute_horizontal_ratio(face_landmarks, w, h)
+            v_ratio = self._compute_vertical_ratio(face_landmarks, w, h)
 
-            gaze_direction = self._ratio_to_direction(smoothed_ratio)
+            self._h_ratio_history.append(h_ratio)
+            self._v_ratio_history.append(v_ratio)
+
+            smoothed_h = utils.moving_average(self._h_ratio_history, window=5)
+            smoothed_v = utils.moving_average(self._v_ratio_history, window=5)
+
+            horizontal_label = self._horizontal_label(smoothed_h)
+            vertical_label = self._vertical_label(smoothed_v)
+            gaze_direction = self._combine_labels(horizontal_label, vertical_label)
+
+            raw_ratio = (h_ratio, v_ratio)  # return the unsmoothed numbers too, for debugging
 
             frame = self._draw_debug_overlay(frame, face_landmarks, w, h)
 
         # TODO: Add blink detection here using eye-aspect-ratio (EAR)
         # and hook it up so the GUI can use it for "selecting" something.
-
-        # TODO: Add vertical gaze detection (Up/Down) here, probably by
-        # comparing iris position to the top/bottom eyelid landmarks
-        # the same way we do left/right below.
 
         return frame, gaze_direction, raw_ratio
 
@@ -127,29 +133,46 @@ class GazeTracker:
         right_ratio = self._eye_ratio(right_eye, right_iris)
 
         return (left_ratio + right_ratio) / 2.0
+    
+    def _compute_vertical_ratio(self, landmarks, w, h):
+        """
+        same idea as the horizontal ratio, but for vertical movement.
+        (0 = iris is near the top of the eyelid, 1 _= iris is near the bottom)
+        reuses the exact same eye/iris landmark points, just looks at the y-axis
+        instead of x-axis.        
+        """
+        left_eye = utils.landmarks_to_np(landmarks, config.LEFT_EYE_LANDMARKS, w, h)
+        left_iris = utils.landmarks_to_np(landmarks, config.LEFT_IRIS_LANDMARKS, w, h)
+
+        right_eye = utils.landmarks_to_np(landmarks, config.RIGHT_EYE_LANDMARKS, w, h)
+        right_iris = utils.landmarks_to_np(landmarks, config.RIGHT_IRIS_LANDMARKS, w, h)
+
+        left_ratio = self._eye_ratio(left_eye, left_iris, axis=1)
+        right_ratio = self._eye_ratio(right_eye, right_iris, axis=1)
+
+        return (left_ratio + right_ratio) / 2.0
 
     @staticmethod
-    def _eye_ratio(eye_points, iris_points):
+    def _eye_ratio(eye_points, iris_points, axis=0):
         """
         The actual "where's the iris" math for one eye. Basically:
         find the eye's left/right corners, find the iris center, and
         see what percentage of the way across the iris center is.
 
-        0 = iris is jammed against the left corner
-        1 = iris is jammed against the right corner
-        0.5ish = roughly centered
+        axiis=0 (x-axis) -> horizontal: 0 = left corner, 1 = right corner
+        axis=1 *(y-axis) -> vertical: 0 = top eyelid, 1 = bottom eyelid
         """
         iris_center = utils.eye_center(iris_points)
-        eye_left = eye_points[:, 0].min()
-        eye_right = eye_points[:, 0].max()
+        eye_min = eye_points[:, axis].min()
+        eye_max = eye_points[:, axis].max()
 
-        if eye_right - eye_left == 0:
+        if eye_max-eye_min == 0:
             return 0.5  # avoid dividing by zero if something goes weird
 
-        ratio = (iris_center[0] - eye_left) / (eye_right - eye_left)
+        ratio = (iris_center[axis] - eye_min) / (eye_max - eye_min)
         return utils.clamp(ratio, 0.0, 1.0)
 
-    def _ratio_to_direction(self, ratio):
+    def _horizontal_label(self, ratio):
         """
         Turns the ratio number into an actual LEFT/CENTER/RIGHT label
         using the thresholds from config.py.
@@ -164,9 +187,47 @@ class GazeTracker:
             return "RIGHT"
         else:
             return "CENTER"
+        
+    def _vertical_label(self, ratio):
+        """
+        same as _horizontal_label but for up/down. the threshold are
+        little more sensitive because the vertical movement of the 
+        iris is smaller than the horizontal movement.
+
+        TODO: Use per-user calibration_data instead of these fixed
+        thresholds - right now everyone gets the same thresholds
+        whether they have small eyes, big eyes, glasses, whatever.
+        """
+
+        if ratio < config.GAZE_UP_THRESHOLD:
+            return "UP"
+        elif ratio > config.GAZE_DOWN_THRESHOLD:
+            return "DOWN"
+        else:
+            return "CENTER"
+    
+    @staticmethod     
+    def _combine_labels(horizontal_label, vertical_label):
+        """
+        combines the horizontal and vertical labels into one direction
+        string. if youre looking up and to the left at the same time
+        you get "UP-LEFT" if youre just looking up you get "UP etc.\
+        
+        """
+        if horizontal_label == "CENTER" and vertical_label == "CENTER":
+            return "CENTER"
+        elif horizontal_label == "CENTER":
+            return vertical_label
+        elif vertical_label == "CENTER":
+            return horizontal_label
+        else:
+            return f"{vertical_label}-{horizontal_label}"
 
     def _draw_debug_overlay(self, frame, landmarks, w, h):
-        """Draws little dots on the eye corners (green) and iris (red) so you can see what's being tracked."""
+        """
+        Draws little dots on the eye corners (green) and iris (red) so you can see what's being tracked.
+        
+        """
         for idx in config.LEFT_EYE_LANDMARKS + config.RIGHT_EYE_LANDMARKS:
             lm = landmarks[idx]
             cx, cy = int(lm.x * w), int(lm.y * h)
