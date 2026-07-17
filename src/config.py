@@ -53,8 +53,43 @@ GAZE_DOWN_THRESHOLD = 0.54
 # BLINK_EAR_THRESHOLD = ...
 
 # ---- Calibration settings ----
-CALIBRATION_POINTS = ["LEFT", "CENTER", "RIGHT","UP", "DOWN"] 
-CALIBRATION_HOLD_FRAMES = 30  # not actually used yet, placeholder for later
+CALIBRATION_POINTS = [
+    "top_left", "top_center", "top_right",
+    "middle_left", "center", "middle_right",
+    "bottom_left", "bottom_center", "bottom_right"
+]
+
+CALIBRATION_TARGET_POSITIONS = {
+    "top_left": (0.10, 0.10),
+    "top_center": (0.50, 0.10),
+    "top_right": (0.90, 0.10),
+    "middle_left": (0.10, 0.50),
+    "center": (0.50, 0.50),
+    "middle_right": (0.90, 0.50),
+    "bottom_left": (0.10, 0.90),
+    "bottom_center": (0.50, 0.90),
+    "bottom_right": (0.90, 0.90)
+}
+
+CALIBRATION_SAMPLES_PER_POINT = 45  # how many frames to sample for each calibration point
+CALIBRATION_SETTLING_FRAMES = 15  # how many frames to skip before starting to sample for each point
+CALIBRATION_DOT_RADIUS = 10  # radius of the dot that appears on the screen during calibration
+
+#---- Face distance / tracker quality settings ----
+# These are just rough estimates of how far away the user is from the camera.
+MIN_FACE_WIDTH_RATIO = 0.20 # if the face is smaller than this fraction of the frame width, we assume the user is too far away
+MAX_FACE_WIDTH_RATIO = 0.50 # if the face is larger than this fraction of the frame width, we assume the user is too close
+CALIBRATED_FACE_SIZE_TOLERANCE = 0.20 # if the face size changes by more than this fraction from the calibrated size, we assume the user moved
+
+#---- Head pose limits (degrees) ----
+# If the user's head is rotated beyond these angles, we assume they're looking away from the screen
+MAX_CALIBRATION_HEAD_YAW = 22.0
+MAX_CALIBRATION_HEAD_PITCH_DEVIATION = 12.0
+MAX_TRACKING_HEAD_YAW = 18.0
+
+#---- DEBUG / STATS FOR NERDS WINDOW ----
+DEBUG_UPDATE_RATE_MS = 100  # how often (ms) the debug window refreshes, ~10fps
+
 
 # ---- GUI settings ----
 WINDOW_TITLE = "EyeAble - Gaze Tracking Prototype"
