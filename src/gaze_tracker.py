@@ -6,9 +6,17 @@ eyes/irises, and figures out roughly whether you're looking left,
 center, or right. That's it for now - no up/down, no blink stuff yet
 (see the TODOs scattered through this file).
 
+NEW: this file also now tracks a bunch of extra stuff beyond just
+LEFT/CENTER/RIGHT/UP/DOWN - per-eye ratios, face distance, head pose,
+and a "screen_calibration" system that's the first step toward
+predicting where on the actual screen someone's looking, instead of
+just a rough direction. The old direction system is untouched and
+still runs every frame - the new stuff sits alongside it.
+
 """
 
 import os
+import statistics
 import urllib.request
 
 import cv2
@@ -34,19 +42,21 @@ class GazeTracker:
             min_face_detection_confidence=config.MIN_DETECTION_CONFIDENCE,
             min_face_presence_confidence=config.MIN_DETECTION_CONFIDENCE,
             min_tracking_confidence=config.MIN_TRACKING_CONFIDENCE,
+            output_face_blendshapes=True,
         )
         self.landmarker = mp_vision.FaceLandmarker.create_from_options(options)
-
-        # Whatever the calibration screen collects gets stored here.
-        # TODO: Actually use this data to adjust thresholds per-user
-        # instead of the fixed global ones in config.py. Right now we
-        # just save it and don't do anything with it yet.
-        self.calibration_data = {"LEFT": None, "CENTER": None, "RIGHT": None, "UP": None, "DOWN": None}
 
         # Keeps track of recent gaze readings so we can smooth them out
         # (see moving_average in utils.py).
         self._h_ratio_history = []
         self._v_ratio_history = []
+
+        self.screen_calibration = {name: None for name in config.CALIBRATION_TARGET_NAMES}
+        self.calibration_complete = False
+        self.calibrated_face_width_ratio = None
+        self.current_calibration_point = None
+        self.current_calibration_sample_count = 0
+        self.last_tracking_data = {}
 
     @staticmethod
     def _model_path():
@@ -94,8 +104,8 @@ class GazeTracker:
             # We only care about the first face found (num_faces=1 anyway)
             face_landmarks = result.face_landmarks[0]
 
-            h_ratio = self._compute_horizontal_ratio(face_landmarks, w, h)
-            v_ratio = self._compute_vertical_ratio(face_landmarks, w, h)
+            h_ratio, left_h_ratio, right_h_ratio = self._compute_horizontal_ratio(face_landmarks, w, h)
+            v_ratio, left_v_ratio, right_v_ratio = self._compute_vertical_ratio(face_landmarks, w, h)
 
             self._h_ratio_history.append(h_ratio)
             self._v_ratio_history.append(v_ratio)
@@ -109,12 +119,117 @@ class GazeTracker:
 
             raw_ratio = (h_ratio, v_ratio)  # return the unsmoothed numbers too, for debugging
 
+            #---- face size / distance estimation ----
+            """
+            234 and 454 are the leftmost/rightmost points of the face. oval in MediaPipe's landmark 
+            layout. The distance between them is a rough proxy for how far away the face is from 
+            the camera.
+            """
+            face_edge_points = utils.landmarks_to_np(face_landmarks, [234, 454], w, h)
+            face_width_px = utils.distance(face_edge_points[0], face_edge_points[1])
+            face_width_ratio = face_width_px / w  if w else None  # avoid division by zero if something goes weird
+
+            eye_corner_points = utils.landmarks_to_np(face_landmarks, [133, 362], w, h)
+            inter_eye_distance_px = utils.distance(eye_corner_points[0], eye_corner_points[1])
+
+            # ---- eye visibility, from MediaPipe's blink blendshapes ----
+            """
+            This is a signal from the model (not a guess) - if its not available for some reason, we'll just 
+            assume both eyes are visible rather than trying to guess.
+            """
+            both_eyes_visible = True
+            if result.face_blendshapes:
+                blink_scores = {c.category_name: c.score for c in result.face_blendshapes[0]}
+                left_blink = blink_scores.get("eyeBlinkLeft",0.0)
+                right_blink = blink_scores.get("eyeBlinkRight",0.0)
+                both_eyes_visible = left_blink < 0.5 and right_blink < 0.5
+
+            # ---- head pose (best effortm see utils.estimate_head_pose)----
+            head_yaw, head_pitch, head_roll = utils.estimate_head_pose(face_landmarks, w, h)
+
+            tracking_quality, tracking_quality_reason = self._assess_tracking_quality(
+                both_eyes_visible=both_eyes_visible,
+                face_width_ratio=face_width_ratio,
+                head_yaw=head_yaw,
+            )
+
+            self.last_tracking_data = {
+                "face_detected":True,
+                "both_eyes_visible": both_eyes_visible,
+                "gaze_direction":gaze_direction,
+                "horizontal_ratio":smoothed_h,
+                "vertical_ratio":smoothed_v,
+                "raw_horizontal_ratio": h_ratio,
+                "raw_vertical_ratio":v_ratio,
+                "left_horizontal_ratio": left_h_ratio,
+                "right_horizontal_ratio": right_h_ratio,
+                "left_vertical_ratio": left_v_ratio,
+                "right_vertical_ratio": right_v_ratio,
+                "face_width_px": face_width_px,
+                "face_width_ratio": face_width_ratio,
+                "inter_eye_distance_px": inter_eye_distance_px,
+                "head_yaw": head_yaw,
+                "head_pitch": head_pitch,
+                "head_roll": head_roll,
+                "tracking_quality": tracking_quality,
+                "tracking_quality_reason": tracking_quality_reason,
+                "position_status": self._position_status(face_width_ratio),
+            }
+
             frame = self._draw_debug_overlay(frame, face_landmarks, w, h)
+        else:
+            self.last_tracking_data = {
+                "face_detected": False,
+                "both_eyes_visible": False,
+                "gaze_direction": "NO FACE",
+                "horizontal_ratio": None,
+                "vertical_ratio": None,
+                "raw_horizontal_ratio": None,
+                "raw_vertical_ratio": None,
+                "left_horizontal_ratio": None,
+                "right_horizontal_ratio": None,
+                "left_vertical_ratio": None,
+                "right_vertical_ratio": None,
+                "face_width_px": None,
+                "face_width_ratio": None,
+                "inter_eye_distance_px": None,
+                "head_yaw": None,
+                "head_pitch": None,
+                "head_roll": None,
+                "tracking_quality": "NO FACE",
+                "tracking_quality_reason": "No face detected in frame",
+                "position_status": "N/A",
+            }
+        """ Calibration progress fields, added regardless of whether a
+        face was found this frame - the Stats for Nerds window reads
+        these every frame.
+        """
+        if self.current_calibration_point:
+            self.last_tracking_data["current_calibration_point_text"] = (
+                f"{self.current_calibration_point} "
+                f"({self.screen_calibration_index() + 1} of {len(config.CALIBRATION_TARGET_NAMES)})"
+            )
+            self.last_tracking_data["calibration_samples_text"] = (
+                f"{self.current_calibration_sample_count} of {config.CALIBRATION_SAMPLES_PER_POINT}"
+            )
+        else:
+            self.last_tracking_data["current_calibration_point_text"] = "N/A"
+            self.last_tracking_data["calibration_samples_text"] = "N/A"
+        self.last_tracking_data["calibration_complete"] = self.calibration_complete
+
 
         # TODO: Add blink detection here using eye-aspect-ratio (EAR)
         # and hook it up so the GUI can use it for "selecting" something.
 
         return frame, gaze_direction, raw_ratio
+    
+    def screen_calibration_index(self):
+        """
+        Smaller helper so the progress text can show "point 3 of 9" instead of just raw name.
+        """
+        if self.current_calibration_point not in config.CALIBRATION_TARGET_NAMES:
+            return 0
+        return config.CALIBRATION_TARGET_NAMES.index(self.current_calibration_point)
 
     def _compute_horizontal_ratio(self, landmarks, w, h):
         """
@@ -132,7 +247,7 @@ class GazeTracker:
         left_ratio = self._eye_ratio(left_eye, left_iris)
         right_ratio = self._eye_ratio(right_eye, right_iris)
 
-        return (left_ratio + right_ratio) / 2.0
+        return (left_ratio + right_ratio) / 2.0, left_ratio, right_ratio
     
     def _compute_vertical_ratio(self, landmarks, w, h):
         """
@@ -150,7 +265,7 @@ class GazeTracker:
         left_ratio = self._eye_ratio(left_eye, left_iris, axis=1)
         right_ratio = self._eye_ratio(right_eye, right_iris, axis=1)
 
-        return (left_ratio + right_ratio) / 2.0
+        return (left_ratio + right_ratio) / 2.0, left_ratio, right_ratio
 
     @staticmethod
     def _eye_ratio(eye_points, iris_points, axis=0):
@@ -223,6 +338,56 @@ class GazeTracker:
         else:
             return f"{vertical_label}-{horizontal_label}"
 
+    def _assess_tracking_quality(self, both_eyes_visible, face_width_ratio, head_yaw):
+        """
+        Rolls face distance, eye visibility, and head yaw into one
+        GOOD/POOR quality label plus a human-readable reason. Used both
+        to show something useful in the debug window and (with
+        stricter limits) to decide which frames are trustworthy enough
+        to use during calibration.
+        """
+        if not both_eyes_visible:
+            return "POOR", "One or both eyes not clearly visible"
+
+        if face_width_ratio is not None and face_width_ratio < config.MIN_FACE_WIDTH_RATIO:
+            return "POOR", "Face too far from camera"
+
+        if face_width_ratio is not None and face_width_ratio > config.MAX_FACE_WIDTH_RATIO:
+            return "POOR", "Face too close to camera"
+
+        if head_yaw is not None and abs(head_yaw) > config.MAX_TRACKING_HEAD_YAW:
+            return "POOR", "Head turned too far to the side"
+
+        return "GOOD", "Face and eyes are stable"
+
+    def _position_status(self, face_width_ratio):
+        """
+        Rough "are you at a usable distance from the camera" check
+        based on how wide your face appears in the frame - not a real
+        distance in inches/cm, just a ratio. If calibration's already
+        been done, this also checks how far the current face size has
+        drifted from the calibrated reference, since moving noticeably
+        closer/farther after calibrating throws off the screen
+        predictions.
+        """
+        if face_width_ratio is None:
+            return "N/A"
+
+        if self.calibration_complete and self.calibrated_face_width_ratio:
+            relative_size = face_width_ratio / self.calibrated_face_width_ratio
+            if relative_size < (1 - config.CALIBRATED_FACE_SIZE_TOLERANCE):
+                return "MOVE CLOSER (drifted from calibrated position)"
+            elif relative_size > (1 + config.CALIBRATED_FACE_SIZE_TOLERANCE):
+                return "MOVE FARTHER (drifted from calibrated position)"
+            # otherwise fall through to the general range check below
+
+        if face_width_ratio < config.MIN_FACE_WIDTH_RATIO:
+            return "MOVE CLOSER"
+        elif face_width_ratio > config.MAX_FACE_WIDTH_RATIO:
+            return "MOVE FARTHER"
+        else:
+            return "GOOD DISTANCE"
+
     def _draw_debug_overlay(self, frame, landmarks, w, h):
         """
         Draws little dots on the eye corners (green) and iris (red) so you can see what's being tracked.
@@ -239,16 +404,129 @@ class GazeTracker:
             cv2.circle(frame, (cx, cy), 1, (0, 0, 255), -1)
 
         return frame
+    
+    def reset_screen_calibration(self):
+        """Wipes any existing calibration data - used when starting a fresh calibration run."""
+        self.screen_calibration = {name: None for name in config.CALIBRATION_TARGET_NAMES}
+        self.calibration_complete = False
+        self.calibrated_face_width_ratio = None
+        self.current_calibration_point = None
+        self.current_calibration_sample_count = 0
 
-    def apply_calibration(self, calibration_data):
+    def start_screen_calibration_point(self, target_name):
+        """Called by the calibration window when it moves on to a new dot - just resets the progress counters."""
+        self.current_calibration_point = target_name
+        self.current_calibration_sample_count = 0
+
+    def record_calibration_progress(self, sample_count):
+        """Lets the calibration window tell us how many valid samples it's collected so far, for the progress display."""
+        self.current_calibration_sample_count = sample_count
+
+    def apply_screen_calibration_point(self, target_name, samples):
         """
-        Called by the calibration screen once it's done collecting
-        samples. Just stores the data for now.
-
-        TODO: Actually use calibration_data to adjust gaze thresholds
-        per-user instead of letting it sit here unused.
+        Called once the calibration window has collected enough valid
+        samples for one of the nine points. `samples` is a list of
+        dicts (one per valid frame) with the same set of keys - this
+        reduces them down to a single record using the MEDIAN of each
+        field (not the average - median throws out one-off weird
+        frames better than an average would).
         """
-        self.calibration_data = calibration_data
+        if not samples:
+            return
 
+        def median_of(key):
+            values = [s[key] for s in samples if s.get(key) is not None]
+            return statistics.median(values) if values else None
+
+        screen_x, screen_y = config.CALIBRATION_TARGET_POSITIONS[target_name]
+
+        self.screen_calibration[target_name] = {
+            "target_name": target_name,
+            "screen_x": screen_x,
+            "screen_y": screen_y,
+            "horizontal_ratio": median_of("horizontal_ratio"),
+            "vertical_ratio": median_of("vertical_ratio"),
+            "left_horizontal_ratio": median_of("left_horizontal_ratio"),
+            "right_horizontal_ratio": median_of("right_horizontal_ratio"),
+            "left_vertical_ratio": median_of("left_vertical_ratio"),
+            "right_vertical_ratio": median_of("right_vertical_ratio"),
+            "face_width_ratio": median_of("face_width_ratio"),
+            "head_yaw": median_of("head_yaw"),
+            "head_pitch": median_of("head_pitch"),
+        }
+
+        if all(self.screen_calibration[name] is not None for name in config.CALIBRATION_TARGET_NAMES):
+            self.calibration_complete = True
+            face_widths = [
+                self.screen_calibration[name]["face_width_ratio"]
+                for name in config.CALIBRATION_TARGET_NAMES
+                if self.screen_calibration[name]["face_width_ratio"] is not None
+            ]
+            if face_widths:
+                self.calibrated_face_width_ratio = statistics.median(face_widths)
+
+    def predict_screen_region(self, screen_width_px, screen_height_px):
+        """
+        FIRST STAGE ONLY - given the current gaze reading, finds which
+        of the nine calibrated points is "closest" using plain
+        Euclidean distance over (horizontal_ratio, vertical_ratio).
+        This is nearest-neighbor matching, not real screen-coordinate
+        interpolation - the point is just to test whether the system
+        can tell the nine regions apart at all before building
+        anything fancier on top.
+
+        Not wired into the GUI or debug window yet - call this
+        directly (e.g. from a quick test script or the Python
+        console) once calibration_complete is True.
+        """
+        if not self.calibration_complete:
+            return {
+                "region": None, "screen_x": None, "screen_y": None,
+                "pixel_x": None, "pixel_y": None, "valid": False,
+                "tracking_quality": self.last_tracking_data.get("tracking_quality", "NO FACE"),
+            }
+
+        current_h = self.last_tracking_data.get("horizontal_ratio")
+        current_v = self.last_tracking_data.get("vertical_ratio")
+
+        if current_h is None or current_v is None:
+            return {
+                "region": None, "screen_x": None, "screen_y": None,
+                "pixel_x": None, "pixel_y": None, "valid": False,
+                "tracking_quality": self.last_tracking_data.get("tracking_quality", "NO FACE"),
+            }
+
+        best_name = None
+        best_distance = None
+        for name, point in self.screen_calibration.items():
+            if point is None:
+                continue
+            dx = current_h - point["horizontal_ratio"]
+            dy = current_v - point["vertical_ratio"]
+            dist_sq = dx * dx + dy * dy
+            if best_distance is None or dist_sq < best_distance:
+                best_distance = dist_sq
+                best_name = name
+
+        if best_name is None:
+            return {
+                "region": None, "screen_x": None, "screen_y": None,
+                "pixel_x": None, "pixel_y": None, "valid": False,
+                "tracking_quality": self.last_tracking_data.get("tracking_quality", "NO FACE"),
+            }
+
+        point = self.screen_calibration[best_name]
+        pixel_x = int(point["screen_x"] * screen_width_px)
+        pixel_y = int(point["screen_y"] * screen_height_px)
+
+        return {
+            "region": best_name,
+            "screen_x": point["screen_x"],
+            "screen_y": point["screen_y"],
+            "pixel_x": pixel_x,
+            "pixel_y": pixel_y,
+            "valid": True,
+            "tracking_quality": self.last_tracking_data.get("tracking_quality"),
+        }
     def close(self):
         self.landmarker.close()
