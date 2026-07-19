@@ -49,26 +49,37 @@ GAZE_UP_THRESHOLD = 0.46
 GAZE_DOWN_THRESHOLD = 0.54
 
 
-# TODO: Add eye-aspect-ratio (EAR) threshold for blink detection
-# BLINK_EAR_THRESHOLD = ...
+# TODO: We already get blink scores from MediaPipe's blendshapes
+# (eyeBlinkLeft/eyeBlinkRight, see process_frame in gaze_tracker.py) -
+# that's currently only used for "are both eyes visible right now."
+# Turning a deliberate blink into a "select" gesture still needs its
+# own threshold/timing here (e.g. how long a blink has to hold before
+# it counts as intentional vs. just a normal blink).
+# BLINK_SELECT_THRESHOLD = ...
+# BLINK_SELECT_HOLD_MS = ...
 
 # ---- Calibration settings ----
-CALIBRATION_POINTS = [
+# Order matters here - it's the order the calibration window walks
+# through the dots in (top row left-to-right, then middle, then
+# bottom). CALIBRATION_TARGET_POSITIONS below gives each name a
+# normalized (0-1) screen position instead of hardcoded pixels, so
+# this works on whatever monitor resolution someone's running.
+CALIBRATION_TARGET_NAMES = [
     "top_left", "top_center", "top_right",
     "middle_left", "center", "middle_right",
     "bottom_left", "bottom_center", "bottom_right"
 ]
 
 CALIBRATION_TARGET_POSITIONS = {
-    "top_left": (0.10, 0.10),
-    "top_center": (0.50, 0.10),
-    "top_right": (0.90, 0.10),
-    "middle_left": (0.10, 0.50),
+    "top_left": (0.05, 0.05),
+    "top_center": (0.50, 0.05),
+    "top_right": (0.95, 0.05),
+    "middle_left": (0.05, 0.50),
     "center": (0.50, 0.50),
-    "middle_right": (0.90, 0.50),
-    "bottom_left": (0.10, 0.90),
-    "bottom_center": (0.50, 0.90),
-    "bottom_right": (0.90, 0.90)
+    "middle_right": (0.95, 0.50),
+    "bottom_left": (0.05, 0.95),
+    "bottom_center": (0.50, 0.95),
+    "bottom_right": (0.95, 0.95),
 }
 
 CALIBRATION_SAMPLES_PER_POINT = 45  # how many frames to sample for each calibration point
