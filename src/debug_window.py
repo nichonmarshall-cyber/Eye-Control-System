@@ -19,7 +19,8 @@ class StatsForNerdsWindow:
     # (data_key, label_text) pairs, in display order. Keeping this as
     # a list of tuples instead of a dict so the order stays stable.
     FIELDS = [
-        ("gaze_direction", "Gaze direction"),
+        ("gaze_direction", "Gaze direction (fixed thresholds)"),
+        ("calibrated_gaze_direction", "Gaze direction (calibrated)"),
         ("raw_horizontal_ratio", "Horizontal ratio"),
         ("raw_vertical_ratio", "Vertical ratio"),
         ("left_horizontal_ratio", "Left eye horizontal"),
@@ -42,6 +43,9 @@ class StatsForNerdsWindow:
         ("current_calibration_point_text", "Calibration point"),
         ("calibration_samples_text", "Calibration samples"),
         ("calibration_complete", "Calibration completed"),
+        ("both_eyes_closed", "Eyes closed (blink)"),
+        ("eyes_closed_ms", "Eyes closed duration"),
+        ("blink_select_count", "Blink selects"),
     ]
 
     def __init__(self, parent, get_tracking_data, on_close_callback=None):
@@ -116,8 +120,11 @@ class StatsForNerdsWindow:
 
         if key in ("head_yaw", "head_pitch", "head_roll"):
             return f"{value:.1f}\u00b0"
+        
+        if key in ("face_detected", "both_eyes_visible", "calibration_complete", "both_eyes_closed"):
+            return "Yes" if value else "No"
 
-        if key in ("face_width_px", "inter_eye_distance_px"):
+        if key in ("face_width_px", "inter_eye_distance_px", "eyes_closed_ms"):
             return f"{value:.1f}"
 
         if isinstance(value, float):
