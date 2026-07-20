@@ -17,6 +17,7 @@ still runs every frame - the new stuff sits alongside it.
 
 import os
 import statistics
+import time
 import urllib.request
 
 import cv2
@@ -57,6 +58,17 @@ class GazeTracker:
         self.current_calibration_point = None
         self.current_calibration_sample_count = 0
         self.last_tracking_data = {}
+
+        """
+        Blink-to-select tracking. _eyes_closed_since holds a
+        timestamp (from time.monotonic()) for whenever both eyes are
+        currently closed, or None when they're open - this is what
+        lets us measure how long a blink has been held. The count
+        just goes up every time a held-long-enough blink completes.
+        """
+
+        self._eyes_closed_since = None
+        self._blink_select_count = 0
 
     @staticmethod
     def _model_path():
@@ -137,12 +149,18 @@ class GazeTracker:
             This is a signal from the model (not a guess) - if its not available for some reason, we'll just 
             assume both eyes are visible rather than trying to guess.
             """
+            left_blink = 0.0
+            right_blink = 0.0
             both_eyes_visible = True
             if result.face_blendshapes:
                 blink_scores = {c.category_name: c.score for c in result.face_blendshapes[0]}
                 left_blink = blink_scores.get("eyeBlinkLeft",0.0)
                 right_blink = blink_scores.get("eyeBlinkRight",0.0)
                 both_eyes_visible = left_blink < 0.5 and right_blink < 0.5
+
+            both_eyes_closed, eyes_closed_ms = self._update_blink_state(left_blink, right_blink)
+
+            calibrated_gaze_direction = self._calibrated_direction(smoothed_h, smoothed_v)
 
             # ---- head pose (best effortm see utils.estimate_head_pose)----
             head_yaw, head_pitch, head_roll = utils.estimate_head_pose(face_landmarks, w, h)
@@ -174,6 +192,10 @@ class GazeTracker:
                 "tracking_quality": tracking_quality,
                 "tracking_quality_reason": tracking_quality_reason,
                 "position_status": self._position_status(face_width_ratio),
+                "both_eyes_closed": both_eyes_closed,
+                "eyes_closed_ms": eyes_closed_ms,
+                "blink_select_count": self._blink_select_count,
+                "calibrated_gaze_direction": calibrated_gaze_direction,
             }
 
             frame = self._draw_debug_overlay(frame, face_landmarks, w, h)
@@ -199,6 +221,10 @@ class GazeTracker:
                 "tracking_quality": "NO FACE",
                 "tracking_quality_reason": "No face detected in frame",
                 "position_status": "N/A",
+                 "both_eyes_closed": False,
+                "eyes_closed_ms": 0,
+                "blink_select_count": self._blink_select_count,
+                "calibrated_gaze_direction": "NO FACE",
             }
         """ Calibration progress fields, added regardless of whether a
         face was found this frame - the Stats for Nerds window reads
@@ -216,10 +242,6 @@ class GazeTracker:
             self.last_tracking_data["current_calibration_point_text"] = "N/A"
             self.last_tracking_data["calibration_samples_text"] = "N/A"
         self.last_tracking_data["calibration_complete"] = self.calibration_complete
-
-
-        # TODO: Add blink detection here using eye-aspect-ratio (EAR)
-        # and hook it up so the GUI can use it for "selecting" something.
 
         return frame, gaze_direction, raw_ratio
     
@@ -404,6 +426,83 @@ class GazeTracker:
             cv2.circle(frame, (cx, cy), 1, (0, 0, 255), -1)
 
         return frame
+
+    def _nearest_calibrated_region(self, horizontal_ratio, vertical_ratio):
+        """
+        Given a horizontal/vertical ratio, finds which of the nine
+        calibrated points is closest (plain Euclidean distance).
+        Returns the region name, or None if calibration isn't done or
+        the ratios are missing. This is shared by predict_screen_region()
+        (which adds pixel coordinates on top of this) and
+        _calibrated_direction() (which just wants the region name to
+        turn into a word) - so the "which point is closest" math only
+        lives in one place.
+        """
+        if not self.calibration_complete or horizontal_ratio is None or vertical_ratio is None:
+            return None
+
+        best_name = None
+        best_distance = None
+        for name, point in self.screen_calibration.items():
+            if point is None:
+                continue
+            dx = horizontal_ratio - point["horizontal_ratio"]
+            dy = vertical_ratio - point["vertical_ratio"]
+            dist_sq = dx * dx + dy * dy
+            if best_distance is None or dist_sq < best_distance:
+                best_distance = dist_sq
+                best_name = name
+
+        return best_name
+    
+    def _calibrated_direction(self, horizontal_ratio, vertical_ratio):
+        """
+        Translates the nearest calibrated point into the same
+        LEFT/CENTER/RIGHT/UP/DOWN words the old fixed-threshold system
+        already uses (see config.REGION_TO_DIRECTION). Shows
+        "CALIBRATE FIRST" instead of a direction if calibration hasn't
+        been done yet - no silent fallback to the old thresholds for
+        the main label, on purpose.
+        """
+        region = self._nearest_calibrated_region(horizontal_ratio, vertical_ratio)
+        if region is None:
+            return "Calibrate First"
+        return config.REGION_TO_DIRECTION.get(region, "Calibrate First")
+    
+    def _update_blink_state(self, left_blink_score, right_blink_score):
+        """
+        Tracks how long both eyes have been continuously closed
+        together, and counts it as a deliberate "blink select" once
+        they've been held shut for at least BLINK_SELECT_HOLD_MS
+        before reopening. Short blinks (normal blinking) never cross
+        that hold time, so they don't count - only a real, held-shut
+        blink does.
+
+        Returns (both_eyes_closed, eyes_closed_ms) for the current
+        frame - eyes_closed_ms keeps climbing while eyes are held
+        shut, and resets to 0 once they're open again.
+        """
+        both_eyes_closed = (
+            left_blink_score > config.BLINK_CLOSED_SCORE_THRESHOLD
+            and right_blink_score > config.BLINK_CLOSED_SCORE_THRESHOLD
+        )
+
+        now = time.monotonic()
+        eyes_closed_ms = 0
+
+        if both_eyes_closed:
+            if self._eyes_closed_since is None:
+                self._eyes_closed_since = now
+            eyes_closed_ms = (now - self._eyes_closed_since) * 1000
+        else:
+            if self._eyes_closed_since is not None:
+                held_ms = (now - self._eyes_closed_since) * 1000
+                if held_ms >= config.BLINK_SELECT_HOLD_MS:
+                    self._blink_select_count += 1
+                self._eyes_closed_since = None
+        
+        return both_eyes_closed, eyes_closed_ms
+
     
     def reset_screen_calibration(self):
         """Wipes any existing calibration data - used when starting a fresh calibration run."""
@@ -475,38 +574,18 @@ class GazeTracker:
         can tell the nine regions apart at all before building
         anything fancier on top.
 
+        The actual "which point is closest" math now lives in
+        _nearest_calibrated_region() - this method just adds pixel
+        coordinates on top of whatever that returns.
+
         Not wired into the GUI or debug window yet - call this
         directly (e.g. from a quick test script or the Python
         console) once calibration_complete is True.
         """
-        if not self.calibration_complete:
-            return {
-                "region": None, "screen_x": None, "screen_y": None,
-                "pixel_x": None, "pixel_y": None, "valid": False,
-                "tracking_quality": self.last_tracking_data.get("tracking_quality", "NO FACE"),
-            }
-
         current_h = self.last_tracking_data.get("horizontal_ratio")
         current_v = self.last_tracking_data.get("vertical_ratio")
 
-        if current_h is None or current_v is None:
-            return {
-                "region": None, "screen_x": None, "screen_y": None,
-                "pixel_x": None, "pixel_y": None, "valid": False,
-                "tracking_quality": self.last_tracking_data.get("tracking_quality", "NO FACE"),
-            }
-
-        best_name = None
-        best_distance = None
-        for name, point in self.screen_calibration.items():
-            if point is None:
-                continue
-            dx = current_h - point["horizontal_ratio"]
-            dy = current_v - point["vertical_ratio"]
-            dist_sq = dx * dx + dy * dy
-            if best_distance is None or dist_sq < best_distance:
-                best_distance = dist_sq
-                best_name = name
+        best_name = self._nearest_calibrated_region(current_h, current_v)
 
         if best_name is None:
             return {
