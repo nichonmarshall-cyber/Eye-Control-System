@@ -192,7 +192,8 @@ class EyeAbleGUI:
         if success:
             frame, gaze_direction, raw_ratio = self.gaze_tracker.process_frame(frame)
 
-            self.gaze_label.config(text=f"Gaze: {gaze_direction}")
+            calibrated_gaze_direction = self.gaze_tracker.last_tracking_data.get("calibrated_gaze_direction", "...")
+            self.gaze_label.config(text=f"Gaze: {calibrated_gaze_direction}")
 
             if raw_ratio is not None:
                 h_ratio, v_ratio = raw_ratio
