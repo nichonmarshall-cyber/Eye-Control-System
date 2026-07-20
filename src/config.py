@@ -48,15 +48,34 @@ GAZE_RIGHT_THRESHOLD = 0.58
 GAZE_UP_THRESHOLD = 0.46
 GAZE_DOWN_THRESHOLD = 0.54
 
-
-# TODO: We already get blink scores from MediaPipe's blendshapes
-# (eyeBlinkLeft/eyeBlinkRight, see process_frame in gaze_tracker.py) -
-# that's currently only used for "are both eyes visible right now."
-# Turning a deliberate blink into a "select" gesture still needs its
-# own threshold/timing here (e.g. how long a blink has to hold before
-# it counts as intentional vs. just a normal blink).
-# BLINK_SELECT_THRESHOLD = ...
-# BLINK_SELECT_HOLD_MS = ...
+#---- BLink detection settings ----
+"""
+Blink-to-select settings. An eye counts as "closed" once its blink
+blendshape score (from MediaPipe) crosses this threshold - same
+0-1 scale used elsewhere. Held closed longer than BLINK_SELECT_HOLD_MS
+counts as a deliberate blink; anything shorter is just a normal
+blink and gets ignored. Natural blinks are usually under ~400ms, so
+this sits comfortably above that to avoid false triggers.
+"""
+BLINK_CLOSED_SCORE_THRESHOLD = 0.5
+BLINK_SELECT_HOLD_MS = 600
+"""
+Translates a calibrated screen_calibration region name into the same
+LEFT/CENTER/RIGHT/UP/DOWN words the old fixed-threshold system
+already uses - so the main "Gaze:" label can show a calibrated
+result without inventing a whole new vocabulary.
+"""
+REGION_TO_DIRECTION = {
+    "top_left": "UP-LEFT",
+    "top_center": "UP",
+    "top_right": "UP-RIGHT",
+    "middle_left": "LEFT",
+    "center": "CENTER",
+    "middle_right": "RIGHT",
+    "bottom_left": "DOWN-LEFT",
+    "bottom_center": "DOWN",
+    "bottom_right": "DOWN-RIGHT",
+}
 
 # ---- Calibration settings ----
 # Order matters here - it's the order the calibration window walks
