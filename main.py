@@ -12,6 +12,7 @@ from src.gui import EyeAbleGUI
 
 def main():
     root = tk.Tk()
+    root.geometry("1024x600")
     app = EyeAbleGUI(root)
 
     # Makes sure the webcam actually gets released if you close the

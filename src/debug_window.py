@@ -60,7 +60,7 @@ class StatsForNerdsWindow:
 
         self.window = tk.Toplevel(parent)
         self.window.title("EyeAble - Stats for Nerds")
-        self.window.geometry("440x560")
+        self.window.geometry("1920x1080")
         self.window.configure(bg=config.WINDOW_BG)
         self.window.protocol("WM_DELETE_WINDOW", self._on_close)
 
