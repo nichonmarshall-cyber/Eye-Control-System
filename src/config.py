@@ -49,37 +49,77 @@ GAZE_UP_THRESHOLD = 0.46
 GAZE_DOWN_THRESHOLD = 0.54
 
 
-# TODO: We already get blink scores from MediaPipe's blendshapes
-# (eyeBlinkLeft/eyeBlinkRight, see process_frame in gaze_tracker.py) -
-# that's currently only used for "are both eyes visible right now."
-# Turning a deliberate blink into a "select" gesture still needs its
-# own threshold/timing here (e.g. how long a blink has to hold before
-# it counts as intentional vs. just a normal blink).
-# BLINK_SELECT_THRESHOLD = ...
-# BLINK_SELECT_HOLD_MS = ...
+#---- Blink-to-select settings ----
+"""
+An eye counts as "closed" once its blink blendshape score (from
+MediaPipe) crosses this threshold. Held closed longer than
+BLINK_SELECT_HOLD_MS counts as a deliberate blink; anything shorter is
+just a normal blink and gets ignored.
+"""
+BLINK_CLOSED_SCORE_THRESHOLD = 0.5
+BLINK_SELECT_HOLD_MS = 600
+
+"""
+Translates a calibrated screen_calibration region name into the same
+LEFT/CENTER/RIGHT/UP/DOWN words the old fixed-threshold system
+already uses - so the main "Gaze:" label can show a calibrated
+result without inventing a whole new vocabulary.
+"""
+REGION_TO_DIRECTION = {
+    "top_left":       "UP-LEFT",
+    "top_midleft":    "UP-MIDLEFT",
+    "top_midright":   "UP-MIDRIGHT",
+    "top_right":      "UP-RIGHT",
+    "upper_left":     "MIDUP-LEFT",
+    "upper_midleft":  "MIDUP-MIDLEFT",
+    "upper_midright": "MIDUP-MIDRIGHT",
+    "upper_right":    "MIDUP-RIGHT",
+    "lower_left":     "MIDDOWN-LEFT",
+    "lower_midleft":  "MIDDOWN-MIDLEFT",
+    "lower_midright": "MIDDOWN-MIDRIGHT",
+    "lower_right":    "MIDDOWN-RIGHT",
+    "bottom_left":    "DOWN-LEFT",
+    "bottom_midleft": "DOWN-MIDLEFT",
+    "bottom_midright":"DOWN-MIDRIGHT",
+    "bottom_right":   "DOWN-RIGHT",
+}
+
+# Background color a button switches to while the user's gaze is on it,
+# so they can see what a held blink would activate.
+GAZE_HIGHLIGHT_COLOR = "#3a6ea5"
 
 # ---- Calibration settings ----
-# Order matters here - it's the order the calibration window walks
-# through the dots in (top row left-to-right, then middle, then
-# bottom). CALIBRATION_TARGET_POSITIONS below gives each name a
-# normalized (0-1) screen position instead of hardcoded pixels, so
-# this works on whatever monitor resolution someone's running.
+"""
+Order matters here - it's the order the calibration window walks
+through the dots in (top row left-to-right, then middle, then
+bottom). CALIBRATION_TARGET_POSITIONS below gives each name a
+normalized (0-1) screen position instead of hardcoded pixels, so
+this works on whatever monitor resolution someone's running.
+"""
 CALIBRATION_TARGET_NAMES = [
-    "top_left", "top_center", "top_right",
-    "middle_left", "center", "middle_right",
-    "bottom_left", "bottom_center", "bottom_right"
+    "top_left",     "top_midleft",     "top_midright",     "top_right",
+    "upper_left",   "upper_midleft",   "upper_midright",   "upper_right",
+    "lower_left",   "lower_midleft",   "lower_midright",   "lower_right",
+    "bottom_left",  "bottom_midleft",  "bottom_midright",  "bottom_right",
 ]
 
 CALIBRATION_TARGET_POSITIONS = {
-    "top_left": (0.05, 0.05),
-    "top_center": (0.50, 0.05),
-    "top_right": (0.95, 0.05),
-    "middle_left": (0.05, 0.50),
-    "center": (0.50, 0.50),
-    "middle_right": (0.95, 0.50),
-    "bottom_left": (0.05, 0.95),
-    "bottom_center": (0.50, 0.95),
-    "bottom_right": (0.95, 0.95),
+    "top_left":       (0.05, 0.05),
+    "top_midleft":    (0.35, 0.05),
+    "top_midright":   (0.65, 0.05),
+    "top_right":      (0.95, 0.05),
+    "upper_left":     (0.05, 0.35),
+    "upper_midleft":  (0.35, 0.35),
+    "upper_midright": (0.65, 0.35),
+    "upper_right":    (0.95, 0.35),
+    "lower_left":     (0.05, 0.65),
+    "lower_midleft":  (0.35, 0.65),
+    "lower_midright": (0.65, 0.65),
+    "lower_right":    (0.95, 0.65),
+    "bottom_left":    (0.05, 0.95),
+    "bottom_midleft": (0.35, 0.95),
+    "bottom_midright":(0.65, 0.95),
+    "bottom_right":   (0.95, 0.95),
 }
 
 #----Gaze overlay----
@@ -109,13 +149,17 @@ is really a safety net in case some points fail to collect.
 SCREEN_MAPPING_MIN_POINTS = 6
 
 #---- Face distance / tracker quality settings ----
-# These are just rough estimates of how far away the user is from the camera.
+"""
+These are just rough estimates of how far away the user is from the camera.
+"""
 MIN_FACE_WIDTH_RATIO = 0.20 # if the face is smaller than this fraction of the frame width, we assume the user is too far away
 MAX_FACE_WIDTH_RATIO = 0.50 # if the face is larger than this fraction of the frame width, we assume the user is too close
 CALIBRATED_FACE_SIZE_TOLERANCE = 0.20 # if the face size changes by more than this fraction from the calibrated size, we assume the user moved
 
 #---- Head pose limits (degrees) ----
-# If the user's head is rotated beyond these angles, we assume they're looking away from the screen
+"""
+If the user's head is rotated beyond these angles, we assume they're looking away from the screen
+"""
 MAX_CALIBRATION_HEAD_YAW = 22.0
 MAX_CALIBRATION_HEAD_PITCH_DEVIATION = 12.0
 MAX_TRACKING_HEAD_YAW = 18.0
