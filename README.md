@@ -122,25 +122,57 @@ that. After that it's cached in a `models/` folder and works offline.
 Most of this is marked with `# TODO:` comments right in the code so
 it's easy to find where to pick things up.
 
-## Future Work
+# Future Work
 
-- **Wire up screen-position prediction** - actually show/use the output
-  of `predict_screen_region()` somewhere visible (Stats for Nerds is
-  the obvious first spot) instead of it just being a tested-but-unused method
-- **Real screen-coordinate interpolation** - replace the current
-  nearest-of-nine-points matching with something that estimates a
-  continuous X/Y position between the calibrated points
-- **Blink-based selection** - we already get blink data every frame
-  (via MediaPipe's blendshapes); turning a deliberate blink into a
-  "select" action still needs its own logic and hooking up to the GUI
-- **Feed calibration data into the direction thresholds** - actually
-  use `screen_calibration` to adjust `GAZE_LEFT_THRESHOLD` etc. per
-  person instead of the fixed global values everyone shares today
-- **Full menu navigation** - let gaze (and eventually blinks) actually control the app instead of just being a label on screen
-- **Improved gaze accuracy** - better smoothing, account for head tilt vs. actual eye movement, maybe a real model instead of hardcoded thresholds
-- **Accessibility improvements** - high contrast mode, adjustable font sizes, audio feedback, sensitivity settings
-- **Save calibration to disk** - so people don't have to redo all nine points every time they open the app
-- **Per-point calibration redo** - let someone redo a single point instead of restarting the whole nine-point sequence
+The following improvements are planned for future iterations of EyeAble.
+These tasks are independent enough that multiple team members can work
+on them simultaneously.
+
+## User Interface
+
+- Simplify the application flow so users interact with a single
+  dashboard instead of navigating between multiple dashboard screens.
+
+- Improve menu navigation and overall user experience.
+
+- Finish the tutorial screen and provide first-time user guidance.
+
+- Improve the overall visual polish and consistency of the interface.
+
+## Accessibility
+
+- Add gaze-controlled menu navigation.
+
+- Add configurable accessibility settings such as larger text,
+  adjustable blink timing, and customizable tracking sensitivity.
+
+- Add optional audio feedback for calibration, tracking, and selections.
+
+## Calibration
+
+- Save calibration data so returning users do not need to recalibrate
+  every time they launch the application.
+
+- Allow users to recalibrate individual points instead of restarting the
+  entire calibration process.
+
+## Tracking
+
+- Continue improving tracking accuracy under different lighting
+  conditions and camera quality.
+
+- Improve vertical gaze tracking consistency across different users.
+
+- Continue reducing jitter and improving overall tracking stability.
+
+## Performance
+
+- Improve error handling for camera failures and lost face tracking.
+
+- Optimize performance to reduce latency and improve responsiveness.
+
+- Improve compatibility across different screen resolutions and monitor
+  configurations.
 
 ## Known Bugs
 
