@@ -263,10 +263,6 @@ class GazeTracker:
             self.last_tracking_data["calibration_samples_text"] = "N/A"
         self.last_tracking_data["calibration_complete"] = self.calibration_complete
 
-
-        # TODO: Add blink detection here using eye-aspect-ratio (EAR)
-        # and hook it up so the GUI can use it for "selecting" something.
-
         return frame, gaze_direction, raw_ratio
     
     def screen_calibration_index(self):
@@ -337,10 +333,6 @@ class GazeTracker:
         """
         Turns the ratio number into an actual LEFT/CENTER/RIGHT label
         using the thresholds from config.py.
-
-        TODO: Use per-user calibration_data instead of these fixed
-        thresholds - right now everyone gets the same thresholds
-        whether they have small eyes, big eyes, glasses, whatever.
         """
         if ratio < config.GAZE_LEFT_THRESHOLD:
             return "LEFT"
@@ -354,10 +346,6 @@ class GazeTracker:
         same as _horizontal_label but for up/down. the threshold are
         little more sensitive because the vertical movement of the 
         iris is smaller than the horizontal movement.
-
-        TODO: Use per-user calibration_data instead of these fixed
-        thresholds - right now everyone gets the same thresholds
-        whether they have small eyes, big eyes, glasses, whatever.
         """
 
         if ratio < config.GAZE_UP_THRESHOLD:

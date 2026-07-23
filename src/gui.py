@@ -343,10 +343,7 @@ class EyeAbleGUI:
         # separate thread so the whole GUI doesn't lag on slower machines.
 
         self._update_job = self.root.after(config.GUI_UPDATE_DELAY_MS, self._update_frame)
-
-    # TODO: Add blink-based confirmation so a blink can "select" something.
-    # TODO: Actually connect gaze direction to menu navigation (e.g.
-    # holding LEFT/RIGHT gaze for a bit selects a menu item).
+        
     # TODO: Add audio feedback (like a beep or text-to-speech) when
     # gaze direction or selection changes.
 

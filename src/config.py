@@ -41,7 +41,6 @@ RIGHT_IRIS_LANDMARKS = [473, 474, 475, 476, 477]
 # These decide how far the iris has to move before we call it
 # "looking left" or "looking right" instead of "center". I just eyeballed
 # these numbers by testing - they're not scientifically calibrated.
-# TODO: Replace fixed thresholds with a properly calibrated, per-user model
 GAZE_LEFT_THRESHOLD = 0.42
 GAZE_RIGHT_THRESHOLD = 0.58
 
