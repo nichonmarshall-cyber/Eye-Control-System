@@ -8,8 +8,8 @@ digging through every file.
 
 # ---- Camera stuff ----
 CAMERA_INDEX = 0       # change this if you have more than one webcam and it opens the wrong one
-FRAME_WIDTH = 640
-FRAME_HEIGHT = 480
+FRAME_WIDTH = 1280
+FRAME_HEIGHT = 720
 
 # ---- MediaPipe face tracking settings ----
 # Heads up: we are gonna use MediaPipe's new "Tasks" API. It needs a model file that gets
@@ -82,9 +82,31 @@ CALIBRATION_TARGET_POSITIONS = {
     "bottom_right": (0.95, 0.95),
 }
 
+#----Gaze overlay----
+"""
+This overlay needs to run a little faster than the debug window, since we want
+the circle to move smoothly to where we are looking.
+"""
+GAZE_OVERLAY_UPDATE_RATE_MS = 30
+GAZE_OVERLAY_CIRCLE_RADIUS = 20
+GAZE_OVERLAY_COLOR = "#4caf50" # circle color
+GAZE_OVERLAY_FLASH_COLOR = "#ff5555" # the color it changes to when you select something
+GAZE_OVERLAY_FLASH_DURATION_MS = 400 # how long it changes color for
+
 CALIBRATION_SAMPLES_PER_POINT = 45  # how many frames to sample for each calibration point
-CALIBRATION_SETTLING_FRAMES = 15  # how many frames to skip before starting to sample for each point
+CALIBRATION_SETTLING_FRAMES = 8  # how many frames to skip before starting to sample for each point
 CALIBRATION_DOT_RADIUS = 10  # radius of the dot that appears on the screen during calibration
+
+#---- Screen position mapping ----
+"""
+The polynomial that maps a gaze reading to a screen position has six
+terms (see _polynomial_features in gaze_tracker.py), so we need at
+least six calibration points before the fit means anything. Fewer than
+that and it's underdetermined - it'd have more unknowns than equations
+and just be inventing an answer. Nine points clears this easily; this
+is really a safety net in case some points fail to collect.
+"""
+SCREEN_MAPPING_MIN_POINTS = 6
 
 #---- Face distance / tracker quality settings ----
 # These are just rough estimates of how far away the user is from the camera.

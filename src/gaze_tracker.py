@@ -17,10 +17,12 @@ still runs every frame - the new stuff sits alongside it.
 
 import os
 import statistics
+import time
 import urllib.request
 
 import cv2
 import mediapipe as mp
+import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
@@ -57,6 +59,22 @@ class GazeTracker:
         self.current_calibration_point = None
         self.current_calibration_sample_count = 0
         self.last_tracking_data = {}
+
+        """
+        Blink-to-select tracking. _eyes_closed_since holds a
+        timestamp (from time.monotonic()) for whenever both eyes are
+        currently closed, or None when they're open - this is what
+        lets us measure how long a blink has been held. The count
+        just goes up every time a held-long-enough blink completes.
+        """
+
+        self._eyes_closed_since = None
+        self._blink_select_count = 0
+        self._locked_target = None
+        self._smoothed_screen_x = None 
+        self._smoothed_screen_y = None
+        self._poly_coeffs_x = None
+        self._poly_coeffs_y = None
 
     @staticmethod
     def _model_path():
@@ -144,6 +162,12 @@ class GazeTracker:
                 right_blink = blink_scores.get("eyeBlinkRight",0.0)
                 both_eyes_visible = left_blink < 0.5 and right_blink < 0.5
 
+            both_eyes_closed, eyes_closed_ms = self._update_blink_state(left_blink, right_blink)
+
+            gaze_target = self._update_gaze_target(both_eyes_closed, smoothed_h, smoothed_v)
+
+            calibrated_gaze_direction = self._calibrated_direction(smoothed_h, smoothed_v)
+
             # ---- head pose (best effortm see utils.estimate_head_pose)----
             head_yaw, head_pitch, head_roll = utils.estimate_head_pose(face_landmarks, w, h)
 
@@ -174,6 +198,13 @@ class GazeTracker:
                 "tracking_quality": tracking_quality,
                 "tracking_quality_reason": tracking_quality_reason,
                 "position_status": self._position_status(face_width_ratio),
+                "both_eyes_closed": both_eyes_closed,
+                "eyes_closed_ms": eyes_closed_ms,
+                "blink_select_count": self._blink_select_count,
+                "calibrated_gaze_direction": calibrated_gaze_direction,
+                "gaze_target_region": gaze_target["region"] if gaze_target else None,
+                "gaze_target_screen_x": gaze_target["screen_x"] if gaze_target else None,
+                "gaze_target_screen_y": gaze_target["screen_y"] if gaze_target else None,
             }
 
             frame = self._draw_debug_overlay(frame, face_landmarks, w, h)
@@ -199,6 +230,13 @@ class GazeTracker:
                 "tracking_quality": "NO FACE",
                 "tracking_quality_reason": "No face detected in frame",
                 "position_status": "N/A",
+                 "both_eyes_closed": False,
+                "eyes_closed_ms": 0,
+                "blink_select_count": self._blink_select_count,
+                "calibrated_gaze_direction": "NO FACE",
+                "gaze_target_region": self._locked_target["region"] if self._locked_target else None,
+                "gaze_target_screen_x": self._locked_target["screen_x"] if self._locked_target else None,
+                "gaze_target_screen_y": self._locked_target["screen_y"] if self._locked_target else None,
             }
         """ Calibration progress fields, added regardless of whether a
         face was found this frame - the Stats for Nerds window reads
@@ -404,6 +442,317 @@ class GazeTracker:
             cv2.circle(frame, (cx, cy), 1, (0, 0, 255), -1)
 
         return frame
+
+    def _nearest_calibrated_region(self, horizontal_ratio, vertical_ratio):
+        """
+        Given a horizontal/vertical ratio, finds which of the nine
+        calibrated points is closest (plain Euclidean distance).
+        Returns the region name, or None if calibration isn't done or
+        the ratios are missing. This is shared by predict_screen_region()
+        (which adds pixel coordinates on top of this) and
+        _calibrated_direction() (which just wants the region name to
+        turn into a word) - so the "which point is closest" math only
+        lives in one place.
+        """
+        if not self.calibration_complete or horizontal_ratio is None or vertical_ratio is None:
+            return None
+
+        best_name = None
+        best_distance = None
+        for name, point in self.screen_calibration.items():
+            if point is None:
+                continue
+            dx = horizontal_ratio - point["horizontal_ratio"]
+            dy = vertical_ratio - point["vertical_ratio"]
+            dist_sq = dx * dx + dy * dy
+            if best_distance is None or dist_sq < best_distance:
+                best_distance = dist_sq
+                best_name = name
+
+        return best_name
+    
+    def _calibrated_direction(self, horizontal_ratio, vertical_ratio):
+        """
+        Translates the nearest calibrated point into the same
+        LEFT/CENTER/RIGHT/UP/DOWN words the old fixed-threshold system
+        already uses (see config.REGION_TO_DIRECTION). Shows
+        "CALIBRATE FIRST" instead of a direction if calibration hasn't
+        been done yet - no silent fallback to the old thresholds for
+        the main label, on purpose.
+        """
+        region = self._nearest_calibrated_region(horizontal_ratio, vertical_ratio)
+        if region is None:
+            return "Calibrate First"
+        return config.REGION_TO_DIRECTION.get(region, "Calibrate First")
+    
+    def _update_blink_state(self, left_blink_score, right_blink_score):
+        """
+        Tracks how long both eyes have been continuously closed
+        together, and counts it as a deliberate "blink select" once
+        they've been held shut for at least BLINK_SELECT_HOLD_MS
+        before reopening. Short blinks (normal blinking) never cross
+        that hold time, so they don't count - only a real, held-shut
+        blink does.
+
+        Returns (both_eyes_closed, eyes_closed_ms) for the current
+        frame - eyes_closed_ms keeps climbing while eyes are held
+        shut, and resets to 0 once they're open again.
+        """
+        both_eyes_closed = (
+            left_blink_score > config.BLINK_CLOSED_SCORE_THRESHOLD
+            and right_blink_score > config.BLINK_CLOSED_SCORE_THRESHOLD
+        )
+
+        now = time.monotonic()
+        eyes_closed_ms = 0
+
+        if both_eyes_closed:
+            if self._eyes_closed_since is None:
+                self._eyes_closed_since = now
+            eyes_closed_ms = (now - self._eyes_closed_since) * 1000
+        else:
+            if self._eyes_closed_since is not None:
+                held_ms = (now - self._eyes_closed_since) * 1000
+                if held_ms >= config.BLINK_SELECT_HOLD_MS:
+                    self._blink_select_count += 1
+                self._eyes_closed_since = None
+        
+        return both_eyes_closed, eyes_closed_ms
+
+    def _predict_continuous_screen_position(self, horizontal_ratio, vertical_ratio):
+        """
+        Estimate a continuous normalized screen coordinate from a gaze
+        reading.
+
+        Preferred path is the fitted polynomial (see
+        _fit_screen_mapping), because it models the whole eye-to-screen
+        relationship as one equation - so it stays accurate between
+        calibration points and can actually reach the screen edges.
+
+        Falls back to _predict_by_nearest_points if the fit isn't
+        available. Worth knowing WHY that's the fallback and not the
+        primary: blending nearby points is a weighted average, so its
+        output can never land outside the range of the calibration
+        points themselves. Look at a far corner and it gets pulled back
+        toward the middle. The polynomial has no such ceiling.
+        """
+        if not self.calibration_complete or horizontal_ratio is None or vertical_ratio is None:
+            return None
+
+        if self._poly_coeffs_x is not None and self._poly_coeffs_y is not None:
+            features = np.array(self._polynomial_features(horizontal_ratio, vertical_ratio))
+            predicted_x = float(features @ self._poly_coeffs_x)
+            predicted_y = float(features @ self._poly_coeffs_y)
+
+            return {
+                "screen_x": utils.clamp(predicted_x, 0.0, 1.0),
+                "screen_y": utils.clamp(predicted_y, 0.0, 1.0),
+            }
+
+        return self._predict_by_nearest_points(horizontal_ratio, vertical_ratio)
+
+    def _predict_by_nearest_points (self, horizontal_ratio, vertical_ratio,):
+        """
+        Estimate a continuous normalized screen coordinate from the
+        nine calibration points.
+
+        Uses inverse-distance weighting so nearby calibration points
+        influence the result more than distant points.
+        """
+
+        if (not self.calibration_complete or horizontal_ratio is None or vertical_ratio is None):
+            return None
+
+        calibration_points = []
+
+        for name, point in self.screen_calibration.items():
+            if point is None:
+                continue
+
+            calibrated_h = point.get("horizontal_ratio")
+            calibrated_v = point.get("vertical_ratio")
+
+            if calibrated_h is None or calibrated_v is None:
+                continue
+
+            delta_h = horizontal_ratio - calibrated_h
+            delta_v = vertical_ratio - calibrated_v
+            distance_squared = (delta_h ** 2) + (delta_v **2)
+
+            calibration_points.append((distance_squared, name, point))
+
+        if not calibration_points:
+            return None
+
+       #Start with closest calibration points.
+       
+        calibration_points.sort(key = lambda item: item[0])
+
+        weighted_x = 0.0
+        weighted_y = 0.0
+        total_weight = 0.0
+
+        #Four points are enough for local interpolation.
+        for distance_squared, _name, point in calibration_points[:4]:
+
+            #Gaze is essentially directly on a calibration sample.
+            if distance_squared < 0.000001:
+                return {
+                    "screen_x": point["screen_x"],
+                    "screen_y": point["screen_y"],
+                }
+
+            weight = 1.0 / distance_squared
+
+            weighted_x += point["screen_x"] * weight
+            weighted_y += point["screen_y"] * weight
+            total_weight += weight
+
+        if total_weight == 0:
+            return None
+
+        predicted_x = weighted_x / total_weight
+        predicted_y = weighted_y / total_weight
+
+        return {
+            "screen_x": utils.clamp(predicted_x, 0.0, 1.0),
+            "screen_y": utils.clamp(predicted_y, 0.0, 1.0),
+        }
+
+    @staticmethod
+    def _polynomial_features(horizontal_ratio, vertical_ratio):
+        """
+        Turns one gaze reading into the six terms the screen-position
+        model is built from:
+
+            1, h, v, h*v, h^2, v^2
+
+        The h*v cross term lets the model handle the fact that looking
+        up-left doesn't read the same as "looking up" and "looking left"
+        measured separately. The squared terms let the mapping bend -
+        real eye geometry isn't perfectly linear, and the curvature gets
+        worse out toward the edges of the screen.
+
+        Six terms against nine calibration points means the fit is
+        overdetermined (more equations than unknowns), which is exactly
+        what we want - it averages out sampling noise instead of
+        contorting itself to pass through every point exactly.
+        """
+        return [
+            1.0,
+            horizontal_ratio,
+            vertical_ratio,
+            horizontal_ratio * vertical_ratio,
+            horizontal_ratio ** 2,
+            vertical_ratio ** 2,
+        ]
+
+    def _fit_screen_mapping(self):
+        """
+        Fits the polynomial that maps a gaze reading to a screen
+        position, using every calibration point at once. Runs a single
+        time right after the last point lands - not per frame - so the
+        per-frame cost afterward is just plugging numbers into an
+        equation.
+
+        Uses least squares (numpy.linalg.lstsq): instead of passing
+        exactly through any one calibration point, it finds the
+        coefficients that come closest to all of them together. That's
+        deliberate - each calibrated point is already the median of ~45
+        noisy samples, so treating any single one as exact truth would
+        just be overfitting to leftover noise.
+
+        If anything goes wrong the coefficients stay None, and
+        prediction quietly falls back to nearest-point weighting.
+        """
+        rows = []
+        screen_xs = []
+        screen_ys = []
+
+        for name in config.CALIBRATION_TARGET_NAMES:
+            point = self.screen_calibration.get(name)
+            if point is None:
+                continue
+
+            calibrated_h = point.get("horizontal_ratio")
+            calibrated_v = point.get("vertical_ratio")
+            if calibrated_h is None or calibrated_v is None:
+                continue
+
+            rows.append(self._polynomial_features(calibrated_h, calibrated_v))
+            screen_xs.append(point["screen_x"])
+            screen_ys.append(point["screen_y"])
+
+        if len(rows) < config.SCREEN_MAPPING_MIN_POINTS:
+            self._poly_coeffs_x = None
+            self._poly_coeffs_y = None
+            return
+
+        # Each row is one calibration point's six feature values; the
+        # two target lists are where on screen that point actually was.
+        design_matrix = np.array(rows, dtype=float)
+
+        try:
+            self._poly_coeffs_x = np.linalg.lstsq(
+                design_matrix, np.array(screen_xs, dtype=float), rcond=None
+            )[0]
+            self._poly_coeffs_y = np.linalg.lstsq(
+                design_matrix, np.array(screen_ys, dtype=float), rcond=None
+            )[0]
+        except np.linalg.LinAlgError:
+            self._poly_coeffs_x = None
+            self._poly_coeffs_y = None
+        
+                       
+    def _update_gaze_target(self, both_eyes_closed, horizontal_ratio, vertical_ratio):
+        """
+        Updates the continuous gaze-overlay position while the eyes are
+        open. When both eyes close, the last known position stays locked
+        so a held blink can select it.
+        """
+        if not both_eyes_closed:
+            position = self._predict_continuous_screen_position(horizontal_ratio, vertical_ratio,)
+
+            if position is None:
+                self._locked_target = None
+                return None
+
+            target_x = position["screen_x"]
+            target_y = position["screen_y"]
+
+            # 0.15 = smoother/slower
+            # 0.25 = balanced
+            # 0.40 = faster/more jittery
+            smoothing_strength = 0.25
+
+            if (
+                self._smoothed_screen_x is None
+                or self._smoothed_screen_y is None
+            ):
+                self._smoothed_screen_x = target_x
+                self._smoothed_screen_y = target_y
+            else:
+                self._smoothed_screen_x += (
+                    target_x - self._smoothed_screen_x
+                ) * smoothing_strength
+
+                self._smoothed_screen_y += (
+                    target_y - self._smoothed_screen_y
+                ) * smoothing_strength
+
+            # Keep the nearest region for text/debugging.
+            region = self._nearest_calibrated_region(
+                horizontal_ratio,
+                vertical_ratio,
+            )
+
+            self._locked_target = {
+                "region": region,
+                "screen_x": self._smoothed_screen_x,
+                "screen_y": self._smoothed_screen_y,
+            }
+        return self._locked_target
+
     
     def reset_screen_calibration(self):
         """Wipes any existing calibration data - used when starting a fresh calibration run."""
@@ -412,6 +761,11 @@ class GazeTracker:
         self.calibrated_face_width_ratio = None
         self.current_calibration_point = None
         self.current_calibration_sample_count = 0
+        self._locked_target = None
+        self._smoothed_screen_x = None
+        self._smoothed_screen_y = None
+        self._poly_coeffs_x = None
+        self._poly_coeffs_y = None
 
     def start_screen_calibration_point(self, target_name):
         """Called by the calibration window when it moves on to a new dot - just resets the progress counters."""
@@ -464,6 +818,8 @@ class GazeTracker:
             ]
             if face_widths:
                 self.calibrated_face_width_ratio = statistics.median(face_widths)
+
+            self._fit_screen_mapping()
 
     def predict_screen_region(self, screen_width_px, screen_height_px):
         """

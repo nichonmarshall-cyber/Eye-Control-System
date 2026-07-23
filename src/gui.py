@@ -22,6 +22,7 @@ from src.camera import Camera
 from src.gaze_tracker import GazeTracker
 from src.calibration import CalibrationWindow
 from src.debug_window import StatsForNerdsWindow
+from src.gaze_overlay import GazeOverlay
 
 
 class EyeAbleGUI:
@@ -38,6 +39,7 @@ class EyeAbleGUI:
         self.calibration_active = False  # True while CalibrationWindow owns the camera
         self._update_job = None
         self.stats_window = None
+        self.gaze_overlay = None
         self.latest_tracking_data = {}
 
         self._build_layout()
@@ -88,6 +90,11 @@ class EyeAbleGUI:
             self.root, text="Stats for Nerds", width=52, command=self.open_stats_window
         )
         self.stats_button.grid(row=4, column=0, columnspan=4, padx=5, pady=(0, 10))
+
+        self.overlay_button = tk.Button(
+            self.root, text="Show Gaze Overlay", width=52, command=self.toggle_gaze_overlay
+        )
+        self.overlay_button.grid(row=5, column=0, columnspan=4, padx=5, pady=(0, 10))
 
         # TODO: Add accessibility settings panel (font size, high
         # contrast mode, colorblind-friendly colors, etc.)
@@ -176,6 +183,24 @@ class EyeAbleGUI:
     def _on_stats_window_closed(self):
         self.stats_window = None
 
+    def toggle_gaze_overlay(self):
+        """
+        Unlike Stats for Nerds (which has its own close button and just
+        gets refocused if you click the button again), the overlay has
+        no title bar or close button at all - overrideredirect(True)
+        stripped that away on purpose, since it's meant to be a passive
+        visual layer, not a window you interact with directly. That
+        means THIS button is the only way to turn it on or off, so it
+        has to actually toggle instead of just "open or focus."
+        """
+        if self.gaze_overlay is not None:
+            self.gaze_overlay.close()
+            self.gaze_overlay = None
+            self.overlay_button.config(text="Show Gaze Overlay")
+        else:
+            self.gaze_overlay = GazeOverlay(self.root, lambda: self.latest_tracking_data)
+            self.overlay_button.config(text="Hide Gaze Overlay")
+
     def exit_app(self):
         self.stop()
         self.gaze_tracker.close()
@@ -207,9 +232,12 @@ class EyeAbleGUI:
             self.latest_tracking_data = self.gaze_tracker.last_tracking_data
 
             # Converting the OpenCV frame into something Tkinter can actually display
-            display_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            display_frame = cv2.resize(frame, (640, 360))
+            display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
             image = Image.fromarray(display_frame)
             photo = ImageTk.PhotoImage(image=image)
+
             self.video_label.imgtk = photo  # need to keep this reference or Tkinter garbage-collects the image and the video goes blank
             self.video_label.config(image=photo)
         else:
@@ -226,11 +254,4 @@ class EyeAbleGUI:
     # holding LEFT/RIGHT gaze for a bit selects a menu item).
     # TODO: Add audio feedback (like a beep or text-to-speech) when
     # gaze direction or selection changes.
-    # TODO: gaze_tracker.predict_screen_region() is fully implemented
-    # and tested but nothing in this file ever calls it - there's no
-    # predicted screen position shown anywhere yet. Once calibration
-    # is done, wire it up somewhere visible (Stats for Nerds is the
-    # obvious first spot) to actually see whether it can tell the nine
-    # regions apart.
-
 
