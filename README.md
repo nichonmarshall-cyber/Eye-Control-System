@@ -1,193 +1,203 @@
-# EyeAble (Prototype)
+# EyeAble
 
-EyeAble is a gaze-tracking prototype we're building for our software
-engineering class. It uses your webcam to figure out roughly whether
-you're looking left, center, or right, and shows that in a simple
-desktop window.
+EyeAble is a webcam-based gaze-tracking application developed as a group
+Software Engineering project. It uses OpenCV and MediaPipe to estimate
+where a user is looking, performs a nine-point calibration, and maps the
+user's gaze to a continuous position on the screen.
 
-**Heads up: this is just a class milestone prototype, not a finished
-product.** The point is to show the core idea working end to end
-(webcam → face tracking → gaze direction → UI), not to have every
-feature done. A bunch of stuff is intentionally left as TODOs for
-whoever picks it up next.
+The current prototype includes a fullscreen gaze overlay, head-pose and
+tracking-quality diagnostics, and held-blink detection intended for
+hands-free selection. EyeAble is designed and tested primarily for
+Windows systems using a standard webcam and does not require a dedicated
+GPU.
 
 ## Tech Stack
 
 - Python
-- OpenCV (webcam capture)
-- MediaPipe (face/eye landmark detection)
-- Tkinter (the GUI)
-- Built and tested on Windows, no GPU needed
+- OpenCV for webcam capture and image processing
+- MediaPipe for face, eye, iris, and blink landmark detection
+- NumPy for calibrated gaze-to-screen mapping
+- Tkinter for the desktop interface and fullscreen overlay
+- Pillow for displaying OpenCV frames in Tkinter
+- Designed and tested on Windows without a dedicated GPU
 
 ## Project Structure
 
-```
+```text
 EyeAble/
 │
-├── main.py                # run this to start the app
-├── requirements.txt
+├── main.py                  # Application entry point
+├── requirements.txt         # Python dependencies
 ├── README.md
-├── src/
-│   ├── camera.py           # webcam on/off, grabbing frames
-│   ├── gaze_tracker.py      # the actual face/eye/gaze detection logic
-│   ├── calibration.py       # the look-left/center/right calibration popup
-│   ├── debug_window.py      # "Stats for Nerds" debug panel
-│   ├── gui.py               # the Tkinter window and buttons
-│   ├── utils.py             # small helper functions
-│   └── config.py            # all the constants/settings in one place
+├── models/
+│   └── face_landmarker.task # MediaPipe face-landmark model
+└── src/
+    ├── camera.py            # Webcam startup, capture, and shutdown
+    ├── gaze_tracker.py      # Gaze, blink, calibration, and mapping logic
+    ├── calibration.py       # Fullscreen nine-point calibration
+    ├── gaze_overlay.py      # Fullscreen transparent gaze indicator
+    ├── debug_window.py      # Live diagnostic information
+    ├── gui.py               # Current tracking interface and controls
+    ├── utils.py             # Shared helper functions
+    └── config.py            # Application constants and settings
 ```
 
-## Running It
+## Running the Application
 
-```
+Install the required packages:
+
+```bash
 pip install -r requirements.txt
+```
+
+Launch EyeAble:
+
+```bash
 python main.py
 ```
 
-That should pop up a window with your webcam feed, a "Gaze: ..." label,
-and Start / Stop / Calibrate / Exit buttons.
-
-The required MediaPipe model file (`face_landmarker.task`) is included
-in the `models/` folder. If it is missing, the application downloads it
-automatically the first time `main.py` runs.so you'll need internet for 
-that. After that it's cached in a `models/` folder and works offline.
+The MediaPipe model file is included in the `models` directory. If the
+file is missing, EyeAble attempts to download it during startup, which
+requires an internet connection. Once downloaded, the model can be used
+offline.
 
 ## Completed Features
 
-- Webcam opens and streams to the GUI
-- Face detection + eye/iris landmark tracking (MediaPipe)
-- Left/center/right/up/down gaze estimation (fixed-threshold, still the
-  fallback/diagnostic system - see Current Limitations)
-- **Nine-point screen calibration** - walks through 9 dots placed around
-  the screen (corners, edge midpoints, center), automatically collects
-  and median-samples valid gaze readings per point, with quality gating
-  (rejects frames where eyes aren't visible, face is too close/far, or
-  head is turned/tilted too much)
-- **First-stage nearest-point screen-region prediction**
-  (`GazeTracker.predict_screen_region()`) once calibration is done -
-  implemented and tested, not wired into the UI yet (see Future Work)
-- **Head pose estimation** (yaw/pitch/roll) via OpenCV's `solvePnP`,
-  used to reject bad calibration samples and flag poor tracking
-  conditions
-- **Face-distance guidance** - rough "move closer/farther" status based
-  on how wide your face appears in the frame, plus a check against your
-  calibrated distance once you've calibrated
-- **"Stats for Nerds" debug window** - a separate popup with a big set
-  of live tracking numbers (per-eye ratios, face width, head pose,
-  tracking quality and why, calibration progress, etc.), doesn't touch
-  the camera itself
-- Start / Stop / Calibrate / Exit / Stats for Nerds buttons
-- Live video preview with little dots showing what's being tracked
-- Current gaze direction, plus the raw horizontal/vertical ratio
-  numbers, always visible in the main window
-- Code split up by responsibility (camera / tracking / calibration /
-  debug window / GUI / config) so it's hopefully not too painful to
-  work on different parts at once
+- Real-time webcam capture at a requested resolution of 1280×720
+- Smaller 640×360 camera preview while preserving full-resolution
+  frames for tracking
+- MediaPipe face, eye, iris, and blink landmark detection
+- Basic left, center, right, up, and down gaze classification
+- Fullscreen nine-point calibration covering:
+  - Four corners
+  - Four edge-center positions
+  - Screen center
+- Collection of 45 valid gaze samples at each calibration point
+- Calibration quality checks that reject samples when:
+  - No face is detected
+  - Both eyes are not visible
+  - The user is too close to or too far from the camera
+  - The user's head is turned or tilted too far
+- Per-user polynomial gaze-to-screen mapping after calibration
+- Inverse-distance weighted mapping as a fallback if the polynomial
+  model cannot be fitted
+- Smoothed continuous screen coordinates between calibration points
+- Fullscreen transparent gaze overlay
+- Overlay feedback when a held-blink gesture is detected
+- Gaze-position freezing while the user's eyes are closed
+- Held-blink detection that separates deliberate selections from normal
+  short blinks
+- Head-pose estimation for yaw, pitch, and roll
+- Face-distance and tracking-quality guidance
+- Separate Stats for Nerds diagnostic window
+- Live display of horizontal and vertical gaze ratios
+- Modular code separated by camera, tracking, calibration, overlay,
+  diagnostics, interface, configuration, and utility responsibilities
 
 ## Current Limitations
 
-- The LEFT/CENTER/RIGHT/UP/DOWN direction system still runs on fixed
-  global thresholds - the nine-point calibration collects real
-  per-person data now, but nothing feeds it back into those thresholds
-  yet, so everyone still gets the same `GAZE_LEFT_THRESHOLD` etc.
-  regardless of their eyes/face
-- `predict_screen_region()` (nearest-point screen prediction) is
-  implemented and tested but not shown anywhere in the UI yet
-- Vertical gaze estimation still needs improvement and struggles 
-  to accurately distinguish upward and downward eye movement 
-- Head pose (yaw/pitch/roll) is a rough approximation from a generic
-  face model via `cv2.solvePnP`, not a precise measurement - good
-  enough to reject "way too far turned" frames, but accuracy varies
-  across different face shapes
-- "Both eyes visible" comes from MediaPipe's blink blendshape scores -
-  a real signal, not guessed, but it's a blink detector being reused
-  for visibility, not a dedicated occlusion check. We also don't yet
-  use that same blink data as an intentional "select" gesture
-- Face-distance guidance (`face_width_ratio`) is just (face width in
-  pixels) / (frame width) - a relative "close enough to track" signal,
-  not an actual distance in inches or centimeters
-- No keyboard/mouse control or gaze-based menu navigation
-- No audio feedback
-- Only works for one person at a time, and calibration isn't saved to
-  disk - reopening the Calibrate window always wipes previous data and
-  starts the nine points over from scratch, even within the same session
-- Barely any error handling - if the camera's in use by another app or
-  disconnects, expect a crash rather than a nice error message
-- Everything runs on the main thread, so it might chug a bit on slower machines
-- No accessibility options in the UI itself yet
-- Uses MediaPipe's newer "Tasks" API instead of the older one, since
-  the old one got removed in recent MediaPipe versions - just means it
-  needs that model file download mentioned above
+- Held blinks are detected and counted, but they are not yet connected
+  to activating buttons or other interface actions.
+- Gaze coordinates are not yet used to highlight and navigate menu
+  buttons.
+- The redesigned dashboard has not yet been fully integrated with the
+  tracking interface, resulting in an incomplete application flow.
+- Vertical gaze tracking is less consistent than horizontal gaze
+  tracking and can vary between users.
+- Calibration data is stored only in memory and is lost when the
+  application closes.
+- Starting a new calibration clears the previous calibration.
+- Individual calibration points cannot currently be repeated.
+- The user must remain near the position and distance used during
+  calibration for the best results.
+- Head-pose values are approximations based on a generic face model.
+- The application relies on Windows camera permissions and does not yet
+  provide its own permission-request screen.
+- Camera disconnections and cameras already in use by another
+  application have limited error recovery.
+- Tracking runs on the main application thread and may be slower on
+  weaker computers.
+- The interface does not yet include configurable accessibility
+  settings or audio feedback.
+- EyeAble currently supports one tracked user at a time.
 
-Most of this is marked with `# TODO:` comments right in the code so
-it's easy to find where to pick things up.
+## Work Currently in Progress
 
-# Future Work
+- Connect held-blink detection to interface selection
+- Use gaze coordinates to highlight menu options
+- Integrate the redesigned dashboard with the tracking workflow
+- Remove the duplicate-dashboard application flow
 
-The following improvements are planned for future iterations of EyeAble.
-These tasks are independent enough that multiple team members can work
-on them simultaneously.
+## Future Work
 
-## User Interface
+The following tasks are available for future development. Team members
+should communicate which task they are taking before beginning work to
+avoid duplicate changes.
 
-- Simplify the application flow so users interact with a single
-  dashboard instead of navigating between multiple dashboard screens.
+### User Interface
 
-- Improve menu navigation and overall user experience.
+- Simplify the application so users interact with one primary dashboard.
+- Finish the tutorial screen and first-time-user instructions.
+- Improve visual consistency between the dashboard, calibration screen,
+  tracking screen, and diagnostic window.
+- Add clear tracking, calibration, and camera-status indicators.
 
-- Finish the tutorial screen and provide first-time user guidance.
+### Accessibility
 
-- Improve the overall visual polish and consistency of the interface.
+- Add adjustable font sizes and larger interface controls.
+- Add a high-contrast display mode.
+- Add configurable blink-hold timing and tracking sensitivity.
+- Add optional audio feedback for calibration, tracking, highlighting,
+  and selection.
+- Add keyboard alternatives for all gaze-controlled actions.
 
-## Accessibility
+### Calibration
 
-- Add gaze-controlled menu navigation.
+- Save calibration profiles to disk.
+- Allow users to load and manage saved calibration profiles.
+- Allow individual calibration points to be repeated.
+- Add a calibration accuracy or validation screen after the nine points
+  are collected.
+- Prompt first-time users to calibrate before enabling gaze controls.
 
-- Add configurable accessibility settings such as larger text,
-  adjustable blink timing, and customizable tracking sensitivity.
+### Tracking
 
-- Add optional audio feedback for calibration, tracking, and selections.
+- Improve vertical gaze accuracy across different users.
+- Add stronger compensation for changes in head position.
+- Improve stability under different lighting conditions and webcam
+  quality.
+- Add adaptive smoothing that reduces jitter while remaining responsive.
+- Add tracking-confidence feedback for the user.
 
-## Calibration
+### Reliability and Performance
 
-- Save calibration data so returning users do not need to recalibrate
-  every time they launch the application.
+- Improve handling for unavailable, disconnected, or blocked cameras.
+- Provide a clear message when the MediaPipe model cannot be downloaded.
+- Move expensive tracking work away from the Tkinter interface thread.
+- Measure and verify frame-processing latency.
+- Improve support for different display resolutions and multiple
+  monitors.
 
-- Allow users to recalibrate individual points instead of restarting the
-  entire calibration process.
+## Known Issues
 
-## Tracking
-
-- Continue improving tracking accuracy under different lighting
-  conditions and camera quality.
-
-- Improve vertical gaze tracking consistency across different users.
-
-- Continue reducing jitter and improving overall tracking stability.
-
-## Performance
-
-- Improve error handling for camera failures and lost face tracking.
-
-- Optimize performance to reduce latency and improve responsiveness.
-
-- Improve compatibility across different screen resolutions and monitor
-  configurations.
-
-## Known Bugs
-
-- If no face is detected, the label says "NO FACE" but the video might briefly freeze
-- Calibration checks that *tracking conditions* look solid (face visible, good distance, head not turned too far) before counting a frame, but it can't actually confirm you were looking at the right dot - it trusts that you were
-- Closing the calibration window partway through and reopening it always wipes previous progress and restarts the whole nine-point sequence - there's no way to resume or save a partial run
-- Head pose estimation uses a generic face model, so yaw/pitch numbers will be a bit off for unusual face proportions - it's tuned to reject clearly-bad frames, not to be precise
-- Might run slow on weaker laptops since there's no frame skipping or threading yet
+- Calibration assumes the user is looking at the displayed target; it
+  cannot independently verify attention to the correct dot.
+- Tracking accuracy decreases when the user changes position after
+  calibration.
+- Closing calibration before completion discards the current progress.
+- The gaze overlay can jitter when landmark measurements fluctuate.
+- The application may run more slowly on lower-powered computers.
 
 ## Team Notes
 
-Roughly who'd touch what:
-
-- `gaze_tracker.py` - anyone doing blink-based selection, accuracy improvements, feeding calibration data into the direction thresholds, or building out real screen-position interpolation
-- `calibration.py` - anyone improving the calibration flow, adding per-point redo, or saving calibration to disk
-- `debug_window.py` - anyone adding more Stats for Nerds fields (like predicted screen X/Y once that's wired up)
-- `gui.py` - anyone doing menu navigation, accessibility settings, or audio feedback
-- `config.py` - shared constants, add new settings here instead of hardcoding numbers elsewhere
+- Coordinate before editing shared tracking or configuration files.
+- `gaze_tracker.py` contains the gaze mapping, smoothing, calibration,
+  blink-state, and tracking-quality logic.
+- `gui.py` contains the current tracking interface and will handle
+  gaze-controlled button highlighting and selection.
+- `gaze_overlay.py` displays the calibrated gaze position and blink
+  feedback but should not contain button-specific actions.
+- `calibration.py` controls the nine-point calibration sequence.
+- `config.py` should contain shared settings instead of hardcoded values.
+- Future tasks should be selected from this README and announced to the
+  team before implementation.
