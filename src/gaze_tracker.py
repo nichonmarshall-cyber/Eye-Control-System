@@ -70,6 +70,7 @@ class GazeTracker:
 
         self._eyes_closed_since = None
         self._blink_select_count = 0
+        self._last_blink_select_target = None
         self._locked_target = None
         self._smoothed_screen_x = None 
         self._smoothed_screen_y = None
@@ -155,6 +156,9 @@ class GazeTracker:
             This is a signal from the model (not a guess) - if its not available for some reason, we'll just 
             assume both eyes are visible rather than trying to guess.
             """
+            left_blink = 0.0
+            right_blink = 0.0
+
             both_eyes_visible = True
             if result.face_blendshapes:
                 blink_scores = {c.category_name: c.score for c in result.face_blendshapes[0]}
@@ -205,6 +209,8 @@ class GazeTracker:
                 "gaze_target_region": gaze_target["region"] if gaze_target else None,
                 "gaze_target_screen_x": gaze_target["screen_x"] if gaze_target else None,
                 "gaze_target_screen_y": gaze_target["screen_y"] if gaze_target else None,
+                "blink_select_target_screen_x": self._last_blink_select_target["screen_x"] if self._last_blink_select_target else None,
+                "blink_select_target_screen_y": self._last_blink_select_target["screen_y"] if self._last_blink_select_target else None,
             }
 
             frame = self._draw_debug_overlay(frame, face_landmarks, w, h)
@@ -237,6 +243,8 @@ class GazeTracker:
                 "gaze_target_region": self._locked_target["region"] if self._locked_target else None,
                 "gaze_target_screen_x": self._locked_target["screen_x"] if self._locked_target else None,
                 "gaze_target_screen_y": self._locked_target["screen_y"] if self._locked_target else None,
+                "blink_select_target_screen_x": self._last_blink_select_target["screen_x"] if self._last_blink_select_target else None,
+                "blink_select_target_screen_y": self._last_blink_select_target["screen_y"] if self._last_blink_select_target else None,
             }
         """ Calibration progress fields, added regardless of whether a
         face was found this frame - the Stats for Nerds window reads
@@ -515,6 +523,13 @@ class GazeTracker:
                 held_ms = (now - self._eyes_closed_since) * 1000
                 if held_ms >= config.BLINK_SELECT_HOLD_MS:
                     self._blink_select_count += 1
+                    # The gaze target froze the instant the eyes closed
+                    # (see _update_gaze_target), so right now it still
+                    # holds whatever the user was looking at when the
+                    # blink started - capture it before tracking resumes.
+                    self._last_blink_select_target = (
+                        dict(self._locked_target) if self._locked_target else None
+                    )
                 self._eyes_closed_since = None
         
         return both_eyes_closed, eyes_closed_ms
@@ -762,6 +777,7 @@ class GazeTracker:
         self.current_calibration_point = None
         self.current_calibration_sample_count = 0
         self._locked_target = None
+        self._last_blink_select_target = None
         self._smoothed_screen_x = None
         self._smoothed_screen_y = None
         self._poly_coeffs_x = None
