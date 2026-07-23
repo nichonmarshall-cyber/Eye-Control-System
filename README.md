@@ -2,14 +2,14 @@
 
 EyeAble is a webcam-based gaze-tracking application developed as a group
 Software Engineering project. It uses OpenCV and MediaPipe to estimate
-where a user is looking, performs a nine-point calibration, and maps the
-user's gaze to a continuous position on the screen.
+where a user is looking, performs a sixteen-point calibration, and maps
+the user's gaze to a continuous position on the screen.
 
 The current prototype includes a fullscreen gaze overlay, head-pose and
-tracking-quality diagnostics, and held-blink detection intended for
-hands-free selection. EyeAble is designed and tested primarily for
-Windows systems using a standard webcam and does not require a dedicated
-GPU.
+tracking-quality diagnostics, and held-blink detection wired to
+hands-free button selection. EyeAble is designed and tested primarily
+for Windows systems using a standard webcam and does not require a
+dedicated GPU.
 
 ## Tech Stack
 
@@ -34,7 +34,7 @@ EyeAble/
 └── src/
     ├── camera.py            # Webcam startup, capture, and shutdown
     ├── gaze_tracker.py      # Gaze, blink, calibration, and mapping logic
-    ├── calibration.py       # Fullscreen nine-point calibration
+    ├── calibration.py       # Fullscreen sixteen-point calibration
     ├── gaze_overlay.py      # Fullscreen transparent gaze indicator
     ├── debug_window.py      # Live diagnostic information
     ├── gui.py               # Current tracking interface and controls
@@ -67,11 +67,8 @@ offline.
 - Smaller 640×360 camera preview while preserving full-resolution
   frames for tracking
 - MediaPipe face, eye, iris, and blink landmark detection
-- Basic left, center, right, up, and down gaze classification
-- Fullscreen nine-point calibration covering:
-  - Four corners
-  - Four edge-center positions
-  - Screen center
+- Fullscreen sixteen-point calibration arranged as a 4×4 grid covering
+  the corners, edges, and interior of the screen ~ 
 - Collection of 45 valid gaze samples at each calibration point
 - Calibration quality checks that reject samples when:
   - No face is detected
@@ -87,6 +84,13 @@ offline.
 - Gaze-position freezing while the user's eyes are closed
 - Held-blink detection that separates deliberate selections from normal
   short blinks
+- Hands-free button selection: gaze-based hover highlighting on the
+  prototype dashboard, with a held-blink activating whichever button
+  the user is looking at
+- Prototype dashboard buttons resized and spaced with slightly larger
+  hit targets so they are easier to select by gaze. The live dashboard
+  is expected to use its own sizing and does not depend on these
+  values.
 - Head-pose estimation for yaw, pitch, and roll
 - Face-distance and tracking-quality guidance
 - Separate Stats for Nerds diagnostic window
@@ -96,12 +100,11 @@ offline.
 
 ## Current Limitations
 
-- Held blinks are detected and counted, but they are not yet connected
-  to activating buttons or other interface actions.
-- Gaze coordinates are not yet used to highlight and navigate menu
-  buttons.
-- The redesigned dashboard has not yet been fully integrated with the
+- The redesigned dashboard has not yet been integrated with the
   tracking interface, resulting in an incomplete application flow.
+- Selection accuracy is limited by webcam gaze precision, so smaller
+  buttons on the prototype dashboard can still be difficult to target
+  reliably.
 - Vertical gaze tracking is less consistent than horizontal gaze
   tracking and can vary between users.
 - Calibration data is stored only in memory and is lost when the
@@ -123,8 +126,6 @@ offline.
 
 ## Work Currently in Progress
 
-- Connect held-blink detection to interface selection
-- Use gaze coordinates to highlight menu options
 - Integrate the redesigned dashboard with the tracking workflow
 - Remove the duplicate-dashboard application flow
 
@@ -156,8 +157,8 @@ avoid duplicate changes.
 - Save calibration profiles to disk.
 - Allow users to load and manage saved calibration profiles.
 - Allow individual calibration points to be repeated.
-- Add a calibration accuracy or validation screen after the nine points
-  are collected.
+- Add a calibration accuracy or validation screen after the sixteen
+  points are collected.
 - Prompt first-time users to calibrate before enabling gaze controls.
 
 ### Tracking
@@ -166,8 +167,13 @@ avoid duplicate changes.
 - Add stronger compensation for changes in head position.
 - Improve stability under different lighting conditions and webcam
   quality.
-- Add adaptive smoothing that reduces jitter while remaining responsive.
+- Consider a velocity-adaptive smoothing approach (for example, a 1€
+  filter) as one possible way to reduce jitter while remaining
+  responsive during quick eye movements.
 - Add tracking-confidence feedback for the user.
+- Consider adding a short dwell requirement before a blink can activate
+  a button, to make hands-free selection feel steadier on small
+  targets.
 
 ### Reliability and Performance
 
@@ -193,11 +199,11 @@ avoid duplicate changes.
 - Coordinate before editing shared tracking or configuration files.
 - `gaze_tracker.py` contains the gaze mapping, smoothing, calibration,
   blink-state, and tracking-quality logic.
-- `gui.py` contains the current tracking interface and will handle
-  gaze-controlled button highlighting and selection.
+- `gui.py` contains the current tracking interface and hosts the
+  gaze-controlled button highlighting and selection logic.
 - `gaze_overlay.py` displays the calibrated gaze position and blink
   feedback but should not contain button-specific actions.
-- `calibration.py` controls the nine-point calibration sequence.
+- `calibration.py` controls the sixteen-point calibration sequence.
 - `config.py` should contain shared settings instead of hardcoded values.
 - Future tasks should be selected from this README and announced to the
   team before implementation.
