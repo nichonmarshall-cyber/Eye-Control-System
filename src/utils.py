@@ -39,9 +39,6 @@ def moving_average(values, window=5):
     Averages the last few gaze readings together so the direction label
     doesn't flicker like crazy every single frame. Pretty basic smoothing,
     could definitely be better.
-
-    TODO: Improve gaze smoothing (e.g. exponential smoothing, Kalman
-    filter, or outlier rejection) for more stable direction output.
     """
     if len(values) == 0:
         return 0
