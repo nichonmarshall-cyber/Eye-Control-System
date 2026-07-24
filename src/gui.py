@@ -13,6 +13,8 @@ This file is the only one that reads the camera during noraml
 """
 
 import tkinter as tk
+import cv2
+from PIL import Image, ImageTk
 
 from src import config
 from src.camera import Camera
