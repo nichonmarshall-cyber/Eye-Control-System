@@ -123,7 +123,7 @@ class SecondScreen(tk.Frame):
 
         # Buttons with icons
         make_icon_button(main, self.icon_tracking, "Start Tracking",
-                         lambda: controller.show_frame("TrackingScreen")).grid(row=2, column=0, padx=30, pady=15)
+                         lambda: (controller.show_frame("TrackingScreen"),controller.start())).grid(row=2, column=0, padx=30, pady=15)
 
         make_icon_button(main, self.icon_calibration, "Calibration",
                          lambda: controller.open_calibration()).grid(row=2, column=1, padx=30, pady=15)
