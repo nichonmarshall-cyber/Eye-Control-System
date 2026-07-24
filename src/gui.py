@@ -27,6 +27,7 @@ from src.gaze_overlay import GazeOverlay
 from src.start_screen import StartScreen
 from src.second_screen import SecondScreen
 from src.tracking_screen import TrackingScreen
+from src.dashboard_screen import DashboardScreen
 
 
 class EyeAbleGUI:
@@ -34,7 +35,7 @@ class EyeAbleGUI:
         self.root = root
         self.root.title(config.WINDOW_TITLE)
         self.root.configure(bg=config.WINDOW_BG)
-        self.root.geometry("1024x600")
+        self.root.geometry("1300x820")
 
         self.camera = Camera()
         self.gaze_tracker = GazeTracker()
@@ -63,7 +64,7 @@ class EyeAbleGUI:
         container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
-        for ScreenClass in (StartScreen, SecondScreen, TrackingScreen):
+        for ScreenClass in (StartScreen, SecondScreen, TrackingScreen, DashboardScreen):
             name = ScreenClass.__name__
             frame = ScreenClass(container, self)
             frame.grid(row=0, column=0, sticky="nsew")
@@ -75,17 +76,19 @@ class EyeAbleGUI:
         frame = self.frames.get(name)
         if frame is not None:
             frame.tkraise()
+            if hasattr(frame, "on_shown"):
+                frame.on_shown()
 
     def start(self):
-        if self.running:
-            return
-        success = self.camera.start()
-        if not success:
-            if self.gaze_label is not None:
-                self.gaze_label.config(text="Gaze: Camera Error")
-            return
-        self.running = True
-        self._update_frame()
+        if not self.running:
+            success = self.camera.start()
+            if not success:
+                if self.gaze_label is not None:
+                    self.gaze_label.config(text="Gaze: Camera Error")
+                return
+            self.running = True
+            self._update_frame()
+
         if self.gaze_overlay is None:
             self.toggle_gaze_overlay()
 

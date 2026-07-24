@@ -74,6 +74,7 @@ class GazeOverlay:
         norm_x = data.get("gaze_target_screen_x")
         norm_y = data.get("gaze_target_screen_y")
         blink_count = data.get("blink_select_count", 0)
+        
 
         # A selection just happened if the counter moved since our last
         # look at it - that's how we know to flash, even though we're
