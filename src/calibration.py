@@ -61,6 +61,9 @@ class CalibrationWindow:
         except tk.TclError:
             self.window.geometry(f"{screen_w}x{screen_h}+0+0")
 
+        self.window.focus_force()
+        self.window.grab_set()
+
         self.window.bind("<Escape>", lambda event: self._cancel())
         self.window.protocol("WM_DELETE_WINDOW",self._cancel)
 
