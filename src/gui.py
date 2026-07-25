@@ -28,6 +28,7 @@ from src.start_screen import StartScreen
 from src.second_screen import SecondScreen
 from src.tracking_screen import TrackingScreen
 from src.dashboard_screen import DashboardScreen
+from src.tutorial_screen import TutorialScreen
 
 
 class EyeAbleGUI:
@@ -64,7 +65,7 @@ class EyeAbleGUI:
         container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
-        for ScreenClass in (StartScreen, SecondScreen, TrackingScreen, DashboardScreen):
+        for ScreenClass in (StartScreen, SecondScreen, TrackingScreen, DashboardScreen,TutorialScreen):
             name = ScreenClass.__name__
             frame = ScreenClass(container, self)
             frame.grid(row=0, column=0, sticky="nsew")

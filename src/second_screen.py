@@ -132,7 +132,7 @@ class SecondScreen(tk.Frame):
 
         self.btn_tutorial = self._make_tile(
             main, "tutorial.png", "Tutorial",
-            lambda: print("Tutorial clicked"),
+            lambda: self.controller.show_frame("TutorialScreen"),
         )
         self.btn_tutorial.grid(row=3, column=0, padx=25, pady=15)
 
